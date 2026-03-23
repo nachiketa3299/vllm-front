@@ -1,0 +1,15 @@
+You are extracting ChatGarment-compatible garment parameters from a single garment image.
+
+Use the provided templates as the exact output schema.
+Infer the most plausible values from the image.
+Keep object structure, key names, and nesting exactly the same as the templates.
+
+Rules:
+- Return JSON only.
+- Do not include markdown fences.
+- Do not explain your reasoning.
+- Do not add comments.
+- Do not omit keys.
+- Do not add new keys.
+- Use values that best match the garment shown in the image.
+- Preserve booleans, nulls, strings, and numeric fields in the correct places.

@@ -1,0 +1,250 @@
+:root {
+  color-scheme: light;
+  --bg: #f6f3eb;
+  --panel: #fffaf1;
+  --panel-strong: #f2ead7;
+  --text: #231f19;
+  --muted: #6c6253;
+  --accent: #c85d3a;
+  --accent-strong: #8d3920;
+  --border: #d9cdb7;
+  --shadow: rgba(35, 31, 25, 0.08);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: "IBM Plex Sans KR", "Noto Sans KR", sans-serif;
+  color: var(--text);
+  background:
+    radial-gradient(circle at top left, rgba(200, 93, 58, 0.12), transparent 32%),
+    radial-gradient(circle at bottom right, rgba(141, 57, 32, 0.12), transparent 28%),
+    var(--bg);
+}
+
+.page {
+  width: min(1120px, calc(100% - 32px));
+  margin: 32px auto;
+}
+
+.hero {
+  margin-bottom: 20px;
+}
+
+h1 {
+  margin: 0 0 8px;
+  font-size: clamp(2rem, 4vw, 3.1rem);
+  line-height: 1.02;
+  letter-spacing: -0.04em;
+}
+
+.hero p {
+  margin: 0;
+  max-width: 720px;
+  color: var(--muted);
+  font-size: 1rem;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(300px, 380px) minmax(0, 1fr);
+  gap: 20px;
+}
+
+.panel {
+  background: rgba(255, 250, 241, 0.9);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  box-shadow: 0 16px 32px var(--shadow);
+  backdrop-filter: blur(8px);
+}
+
+.controls {
+  padding: 20px;
+}
+
+.dropzone {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 320px;
+  padding: 20px;
+  border: 2px dashed var(--border);
+  border-radius: 20px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.58), rgba(242, 234, 215, 0.7));
+  text-align: center;
+  transition: border-color 160ms ease, transform 160ms ease, background 160ms ease;
+  cursor: pointer;
+}
+
+.dropzone.dragover {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+  background: linear-gradient(180deg, rgba(255, 246, 239, 0.95), rgba(245, 224, 214, 0.9));
+}
+
+.dropzone img {
+  width: 100%;
+  max-height: 280px;
+  object-fit: contain;
+  border-radius: 16px;
+  display: none;
+}
+
+.dropzone.has-image .placeholder {
+  display: none;
+}
+
+.dropzone.has-image img {
+  display: block;
+}
+
+.placeholder strong {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 1.1rem;
+}
+
+.placeholder span {
+  color: var(--muted);
+}
+
+.actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+button {
+  appearance: none;
+  border: 0;
+  border-radius: 999px;
+  padding: 14px 18px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 120ms ease, opacity 120ms ease, background 120ms ease;
+}
+
+button:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.secondary {
+  background: var(--panel-strong);
+  color: var(--text);
+}
+
+.primary {
+  background: var(--accent);
+  color: #fff;
+}
+
+.download {
+  background: var(--accent-strong);
+  color: #fff;
+  width: 100%;
+}
+
+.status {
+  min-height: 24px;
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.status.error {
+  color: #9d1c1c;
+}
+
+.preview {
+  padding: 20px;
+}
+
+.log-card {
+  margin-top: 16px;
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  overflow: hidden;
+}
+
+.log-card header {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(242, 234, 215, 0.75);
+  font-weight: 700;
+}
+
+.log-output {
+  margin: 0;
+  padding: 16px;
+  min-height: 160px;
+  max-height: 240px;
+  overflow: auto;
+  background: rgba(35, 31, 25, 0.96);
+  color: #f8ead1;
+  font-family: "IBM Plex Mono", "Cascadia Code", monospace;
+  font-size: 0.86rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.preview-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.preview-card {
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  overflow: hidden;
+}
+
+.preview-card header {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(242, 234, 215, 0.75);
+  font-weight: 700;
+}
+
+pre {
+  margin: 0;
+  padding: 16px;
+  min-height: 560px;
+  max-height: 70vh;
+  overflow: auto;
+  background: transparent;
+  color: var(--text);
+  font-family: "IBM Plex Mono", "Cascadia Code", monospace;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+input[type="file"] {
+  display: none;
+}
+
+@media (max-width: 920px) {
+  .layout,
+  .preview-grid,
+  .actions {
+    grid-template-columns: 1fr;
+  }
+
+  pre {
+    min-height: 320px;
+  }
+}
