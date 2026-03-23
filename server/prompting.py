@@ -29,10 +29,10 @@ class PromptBuilder:
             for name, fields in codec.floats_section_leaf_fields.items()
         }
 
-    def build_struct_prompt(self) -> str:
+    def build_struct_prompt(self, base_prompt_text: str) -> str:
         return "\n".join(
             [
-                self.assets.get_prompt_text(),
+                base_prompt_text,
                 "Return exactly one JSON array and nothing else. No markdown.",
                 (
                     f"Return {len(self.codec.struct_leaf_fields)} values in this exact order. "
@@ -49,12 +49,13 @@ class PromptBuilder:
         self,
         section_name: str,
         struct_payload: dict[str, Any],
+        base_prompt_text: str,
     ) -> str:
         struct_context = json.dumps(struct_payload, ensure_ascii=False, separators=(",", ":"))
         fields = self.codec.floats_section_leaf_fields[section_name]
         return "\n".join(
             [
-                self.assets.get_prompt_text(),
+                base_prompt_text,
                 "Return exactly one JSON array and nothing else. No markdown.",
                 (
                     f"Return {len(fields)} values in this exact order for floats.{section_name}. "
@@ -131,4 +132,3 @@ class PromptBuilder:
 
     def build_floats_section_response_format(self, section_name: str) -> dict[str, Any]:
         return self._floats_section_response_formats[section_name]
-

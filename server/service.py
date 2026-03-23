@@ -32,15 +32,22 @@ class GenerationService:
         self.prompt_builder = prompt_builder
         self.validator = validator
 
-    async def generate(self, upload: UploadFile, log: RequestLog) -> GeneratedPayload:
+    async def generate(
+        self,
+        upload: UploadFile,
+        log: RequestLog,
+        prompt_text: str | None = None,
+    ) -> GeneratedPayload:
         prepared_image = ImagePreparer.from_upload(
             upload,
             max_image_bytes=self.config.max_image_bytes,
             log=log,
         )
+        base_prompt_text = (prompt_text or "").strip() or self.prompt_builder.assets.get_prompt_text()
+        log.add(f"Using prompt text ({len(base_prompt_text)} chars)")
 
         struct_response = await self.client.create_chat_completion(
-            system_prompt=self.prompt_builder.build_struct_prompt(),
+            system_prompt=self.prompt_builder.build_struct_prompt(base_prompt_text),
             user_text=(
                 "Analyze the garment image and return only the ordered struct values array "
                 "for ChatGarment."
@@ -67,6 +74,7 @@ class GenerationService:
                 system_prompt=self.prompt_builder.build_floats_section_prompt(
                     section_name,
                     struct_payload,
+                    base_prompt_text,
                 ),
                 user_text=(
                     "Analyze the garment image and return only the ordered floats values array "

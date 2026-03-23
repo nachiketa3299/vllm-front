@@ -11,36 +11,62 @@
       <section class="hero">
         <h1>ChatGarment JSON 생성기</h1>
         <p>
-          의류 이미지 1장을 올리고, 생성된 JSON을 미리 본 뒤
-          <code>struct.json</code>과 <code>floats.json</code>이 들어있는 ZIP을 다운로드합니다.
+          의류 이미지와 프롬프트를 함께 보내 ChatGarment JSON을 생성합니다.
+          진행 로그를 확인한 뒤 <code>struct.json</code>과 <code>floats.json</code>이 들어있는 ZIP을 다운로드합니다.
         </p>
       </section>
 
-      <div class="layout">
-        <section class="panel controls">
+      <section class="panel input-panel">
+        <header class="section-header">
+          <h2>입력</h2>
+        </header>
+        <div class="input-grid">
           <input id="file-input" type="file" accept="image/*" />
-          <div id="dropzone" class="dropzone" role="button" tabindex="0" aria-label="이미지 업로드">
-            <div class="placeholder">
-              <strong>이미지를 여기로 드래그하세요</strong>
-              <span>또는 클릭해서 파일 탐색기를 여세요</span>
+          <section class="subpanel image-panel">
+            <header class="subpanel-header">
+              <h3>이미지</h3>
+            </header>
+            <div id="dropzone" class="dropzone" role="button" tabindex="0" aria-label="이미지 업로드">
+              <div class="placeholder">
+                <strong>이미지를 여기로 드래그하세요</strong>
+                <span>또는 클릭해서 파일 탐색기를 여세요</span>
+              </div>
+              <img id="preview-image" alt="선택한 의류 이미지 미리보기" />
             </div>
-            <img id="preview-image" alt="선택한 의류 이미지 미리보기" />
-          </div>
+            <button id="browse-button" class="secondary image-button" type="button">Upload Image</button>
+          </section>
 
-          <div class="actions">
-            <button id="browse-button" class="secondary" type="button">Upload Image</button>
-            <button id="generate-button" class="primary" type="button" disabled>Generate</button>
-            <button id="download-button" class="download" type="button" disabled>Download ZIP</button>
-          </div>
+          <section class="subpanel prompt-panel">
+            <header class="subpanel-header">
+              <h3>프롬프트</h3>
+              <p>Generate 시 현재 텍스트가 이미지와 함께 vLLM으로 전송됩니다.</p>
+            </header>
+            <label class="prompt-label" for="prompt-input">prompts/chatgarment_prompt.txt</label>
+            <textarea
+              id="prompt-input"
+              class="prompt-input"
+              spellcheck="false"
+              placeholder="프롬프트를 불러오는 중..."
+            ></textarea>
+          </section>
+        </div>
+        <div class="section-actions">
+          <button id="generate-button" class="primary" type="button" disabled>Generate</button>
+        </div>
+        <div id="status" class="status"></div>
+      </section>
 
-          <div id="status" class="status"></div>
-          <article class="log-card">
-            <header>로그</header>
-            <pre id="log-output" class="log-output">대기 중입니다.</pre>
-          </article>
-        </section>
+      <article class="panel log-card">
+        <header class="section-header">
+          <h2>로그</h2>
+        </header>
+        <pre id="log-output" class="log-output">대기 중입니다.</pre>
+      </article>
 
-        <section class="panel preview">
+      <section class="panel preview">
+        <header class="section-header">
+          <h2>출력</h2>
+        </header>
           <div class="preview-grid">
             <article class="preview-card">
               <header>struct.json</header>
@@ -51,8 +77,10 @@
               <pre id="floats-preview">{}</pre>
             </article>
           </div>
-        </section>
-      </div>
+          <div class="section-actions output-actions">
+            <button id="download-button" class="download" type="button" disabled>Download ZIP</button>
+          </div>
+      </section>
     </main>
 
     <script src="/static/app.js"></script>

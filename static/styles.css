@@ -49,12 +49,6 @@ h1 {
   font-size: 1rem;
 }
 
-.layout {
-  display: grid;
-  grid-template-columns: minmax(300px, 380px) minmax(0, 1fr);
-  gap: 20px;
-}
-
 .panel {
   background: rgba(255, 250, 241, 0.9);
   border: 1px solid var(--border);
@@ -63,14 +57,75 @@ h1 {
   backdrop-filter: blur(8px);
 }
 
-.controls {
+.input-panel,
+.log-card,
+.preview {
+  margin-bottom: 20px;
   padding: 20px;
+}
+
+.input-grid {
+  display: grid;
+  grid-template-columns: minmax(300px, 380px) minmax(0, 1fr);
+  gap: 20px;
+  align-items: stretch;
+}
+
+.section-header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.section-header h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.section-header p {
+  margin: 0;
+  max-width: 420px;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.subpanel {
+  display: flex;
+  flex-direction: column;
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 16px;
+  height: 100%;
+}
+
+.subpanel-header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.subpanel-header h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.subpanel-header p {
+  margin: 0;
+  max-width: 420px;
+  color: var(--muted);
+  font-size: 0.9rem;
 }
 
 .dropzone {
   position: relative;
   display: grid;
   place-items: center;
+  flex: 1 1 auto;
   min-height: 320px;
   padding: 20px;
   border: 2px dashed var(--border);
@@ -113,11 +168,14 @@ h1 {
   color: var(--muted);
 }
 
-.actions {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 12px;
+.section-actions {
   margin-top: 16px;
+  display: flex;
+  justify-content: stretch;
+}
+
+.section-actions button {
+  width: 100%;
 }
 
 button {
@@ -153,7 +211,11 @@ button:disabled {
 .download {
   background: var(--accent-strong);
   color: #fff;
+}
+
+.image-button {
   width: 100%;
+  margin-top: 14px;
 }
 
 .status {
@@ -167,30 +229,54 @@ button:disabled {
   color: #9d1c1c;
 }
 
-.preview {
-  padding: 20px;
-}
-
 .log-card {
-  margin-top: 16px;
   background: rgba(255, 255, 255, 0.55);
   border: 1px solid var(--border);
-  border-radius: 18px;
   overflow: hidden;
 }
 
-.log-card header {
+.log-card .section-header,
+.preview-card header {
   padding: 14px 16px;
+  margin-bottom: 0;
   border-bottom: 1px solid var(--border);
   background: rgba(242, 234, 215, 0.75);
   font-weight: 700;
 }
 
+.prompt-label {
+  display: block;
+  margin-bottom: 10px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.prompt-input {
+  width: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--text);
+  font: inherit;
+  font-family: "IBM Plex Mono", "Cascadia Code", monospace;
+  font-size: 0.92rem;
+  line-height: 1.6;
+  resize: vertical;
+}
+
+.prompt-input:focus {
+  outline: 2px solid rgba(200, 93, 58, 0.22);
+  border-color: var(--accent);
+}
+
 .log-output {
   margin: 0;
   padding: 16px;
-  min-height: 160px;
-  max-height: 240px;
+  min-height: 180px;
+  max-height: 260px;
   overflow: auto;
   background: rgba(35, 31, 25, 0.96);
   color: #f8ead1;
@@ -213,13 +299,6 @@ button:disabled {
   overflow: hidden;
 }
 
-.preview-card header {
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--border);
-  background: rgba(242, 234, 215, 0.75);
-  font-weight: 700;
-}
-
 pre {
   margin: 0;
   padding: 16px;
@@ -238,10 +317,14 @@ input[type="file"] {
 }
 
 @media (max-width: 920px) {
-  .layout,
-  .preview-grid,
-  .actions {
+  .input-grid,
+  .preview-grid {
     grid-template-columns: 1fr;
+  }
+
+  .section-header,
+  .subpanel-header {
+    flex-direction: column;
   }
 
   pre {

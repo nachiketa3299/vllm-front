@@ -4,6 +4,7 @@ const generateButton = document.getElementById("generate-button");
 const downloadButton = document.getElementById("download-button");
 const dropzone = document.getElementById("dropzone");
 const previewImage = document.getElementById("preview-image");
+const promptInput = document.getElementById("prompt-input");
 const structPreview = document.getElementById("struct-preview");
 const floatsPreview = document.getElementById("floats-preview");
 const status = document.getElementById("status");
@@ -34,6 +35,10 @@ function appendLogs(messages) {
     return;
   }
   messages.forEach((message) => appendLog(message));
+}
+
+function clearLog() {
+  logOutput.textContent = "대기 중입니다.";
 }
 
 function startGenerationTimer() {
@@ -107,13 +112,23 @@ async function generate() {
     return;
   }
 
+  const promptText = promptInput.value.trim();
+  if (!promptText) {
+    setStatus("프롬프트를 입력하세요.", true);
+    return;
+  }
+
   const formData = new FormData();
   formData.append("image", selectedFile);
+  formData.append("prompt_text", promptText);
 
   generateButton.disabled = true;
   downloadButton.disabled = true;
+  resetGeneratedState();
+  clearLog();
   setStatus("vLLM으로 JSON 생성 중...");
   appendLog("생성 요청 시작");
+  appendLog(`프롬프트 전송: ${promptText.length}자`);
   appendLog("생성 중입니다. 큰 이미지와 긴 JSON 출력 때문에 수 분 걸릴 수 있습니다.");
   startGenerationTimer();
 
@@ -168,6 +183,24 @@ function downloadZip() {
   appendLog(`다운로드 완료: ${zipFilename}`);
 }
 
+async function loadPrompt() {
+  try {
+    const response = await fetch("/api/prompt");
+    const payload = await response.json();
+    if (!response.ok || typeof payload.prompt_text !== "string") {
+      throw new Error("기본 프롬프트를 불러오지 못했습니다.");
+    }
+    promptInput.value = payload.prompt_text;
+    promptInput.placeholder = "";
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "기본 프롬프트를 불러오지 못했습니다.";
+    promptInput.placeholder = message;
+    setStatus(message, true);
+    appendLog(message);
+  }
+}
+
 browseButton.addEventListener("click", () => fileInput.click());
 dropzone.addEventListener("click", () => fileInput.click());
 dropzone.addEventListener("keydown", (event) => {
@@ -209,3 +242,5 @@ dropzone.addEventListener("drop", (event) => {
 
 generateButton.addEventListener("click", generate);
 downloadButton.addEventListener("click", downloadZip);
+
+loadPrompt();

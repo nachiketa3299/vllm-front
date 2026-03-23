@@ -1,7 +1,7 @@
 import asyncio
 import contextlib
 
-from fastapi import APIRouter, File, Request, Response, UploadFile
+from fastapi import APIRouter, File, Form, Request, Response, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 
 from .config import AppConfig, AppPaths
@@ -38,10 +38,18 @@ def create_router(
     def health() -> dict[str, str]:
         return {"status": "ok"}
 
+    @router.get("/api/prompt")
+    def prompt() -> dict[str, str]:
+        return {"prompt_text": service.prompt_builder.assets.get_prompt_text()}
+
     @router.post("/api/generate")
-    async def generate(request: Request, image: UploadFile = File(...)) -> Response:
+    async def generate(
+        request: Request,
+        image: UploadFile = File(...),
+        prompt_text: str | None = Form(default=None),
+    ) -> Response:
         log = RequestLog(entries=[])
-        generation_task = asyncio.create_task(service.generate(image, log))
+        generation_task = asyncio.create_task(service.generate(image, log, prompt_text))
         disconnect_task = asyncio.create_task(wait_for_disconnect(request))
 
         try:
@@ -87,4 +95,3 @@ def create_router(
                         await task
 
     return router
-
