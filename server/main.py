@@ -2,26 +2,23 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from .api import create_router
-from .assets import AssetStore
 from .config import CONFIG, PATHS
-from .prompting import PromptBuilder
+from .model_control import ModelControlService
 from .service import GenerationService
-from .transform import TemplateValueCodec
-from .validation import TemplateValidator
+from .token_budget import TokenBudgetService
 from .vllm_client import VLLMClient
 
 
-ASSETS = AssetStore(PATHS)
-CODEC = TemplateValueCodec(ASSETS.struct_template, ASSETS.floats_template)
-PROMPT_BUILDER = PromptBuilder(ASSETS, CODEC)
+MODEL_CONTROL_SERVICE = ModelControlService(
+    config=CONFIG,
+    paths=PATHS,
+)
+TOKEN_BUDGET_SERVICE = TokenBudgetService(CONFIG)
 VLLM_CLIENT = VLLMClient(CONFIG)
-VALIDATOR = TemplateValidator(ASSETS.struct_template, ASSETS.floats_template)
 GENERATION_SERVICE = GenerationService(
     config=CONFIG,
     client=VLLM_CLIENT,
-    codec=CODEC,
-    prompt_builder=PROMPT_BUILDER,
-    validator=VALIDATOR,
+    model_control=MODEL_CONTROL_SERVICE,
 )
 
 
@@ -32,5 +29,7 @@ app.include_router(
         paths=PATHS,
         config=CONFIG,
         service=GENERATION_SERVICE,
+        model_control=MODEL_CONTROL_SERVICE,
+        token_budget=TOKEN_BUDGET_SERVICE,
     )
 )

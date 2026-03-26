@@ -1,6 +1,6 @@
 import base64
 from dataclasses import dataclass
-from typing import Any
+from typing import Optional
 
 
 @dataclass
@@ -24,9 +24,30 @@ class PreparedImage:
 
 @dataclass(frozen=True)
 class GeneratedPayload:
-    struct: dict[str, Any]
-    floats: dict[str, Any]
-    zip_base64: str
+    text: str
+
+
+@dataclass(frozen=True)
+class ProbedModelInfo:
+    model: Optional[str]
+    max_model_len: Optional[int]
+
+
+@dataclass(frozen=True)
+class ModelRuntimeStatus:
+    status: str
+    ownership: str
+    model: Optional[str]
+    pid: Optional[int]
+    current_max_model_len: Optional[int]
+    default_max_model_len: int
+    theoretical_max_model_len: int
+    observed_kv_cache_tokens: Optional[int]
+    recommended_max_model_len: Optional[int]
+    recommended_max_model_len_reason: Optional[str]
+    detail: Optional[str]
+    can_start: bool
+    can_stop: bool
 
 
 class AppError(Exception):
@@ -34,4 +55,3 @@ class AppError(Exception):
         super().__init__(detail)
         self.status_code = status_code
         self.detail = detail
-

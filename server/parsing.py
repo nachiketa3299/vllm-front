@@ -6,6 +6,20 @@ from .models import AppError
 
 class ResponseParser:
     @staticmethod
+    def parse_json_object(response: dict[str, Any], target_name: str) -> dict[str, Any]:
+        normalized = ResponseParser.extract_normalized_content(response)
+        for candidate in ResponseParser._candidate_json_payloads(normalized):
+            try:
+                parsed = json.loads(candidate)
+            except json.JSONDecodeError:
+                continue
+
+            if isinstance(parsed, dict):
+                return parsed
+
+        raise AppError(502, f"{target_name} response must be a JSON object.")
+
+    @staticmethod
     def parse_values_chat_completion(response: dict[str, Any], target_name: str) -> list[Any]:
         normalized = ResponseParser.extract_normalized_content(response)
         for candidate in ResponseParser._candidate_json_payloads(normalized):
@@ -41,9 +55,19 @@ class ResponseParser:
         candidates = [normalized]
         stripped = normalized.strip()
 
+        object_start = stripped.find("{")
+        object_end = stripped.rfind("}")
+        if object_start != -1 and object_end != -1 and object_end > object_start:
+            candidates.append(stripped[object_start : object_end + 1])
+
         array_start = stripped.find("[")
         if array_start == -1:
-            return candidates
+            repaired: list[str] = []
+            for candidate in candidates:
+                fixed = candidate.replace(",]", "]").replace(",}", "}")
+                if fixed not in repaired:
+                    repaired.append(fixed)
+            return repaired
 
         array_end = stripped.rfind("]")
         if array_end != -1:
@@ -53,7 +77,7 @@ class ResponseParser:
 
         repaired: list[str] = []
         for candidate in candidates:
-            fixed = candidate.replace(",]", "]")
+            fixed = candidate.replace(",]", "]").replace(",}", "}")
             if fixed not in repaired:
                 repaired.append(fixed)
         return repaired
@@ -91,4 +115,3 @@ class ResponseParser:
         if lines and lines[-1].startswith("```"):
             lines = lines[:-1]
         return "\n".join(lines).strip()
-

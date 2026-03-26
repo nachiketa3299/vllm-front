@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Optional
 
 import httpx
 
@@ -13,26 +13,34 @@ class VLLMClient:
     def create_payload(
         self,
         *,
-        system_prompt: str,
-        user_text: str,
-        image_data_url: str,
+        system_prompt: Optional[str],
+        user_text: Optional[str],
+        image_data_url: Optional[str],
+        max_completion_tokens: Optional[int] = None,
         response_format: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        user_content: list[dict[str, Any]] = []
+        if user_text:
+            user_content.append({"type": "text", "text": user_text})
+        if image_data_url:
+            user_content.append({"type": "image_url", "image_url": {"url": image_data_url}})
+
+        messages: list[dict[str, Any]] = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append(
+            {
+                "role": "user",
+                "content": user_content,
+            }
+        )
+
         payload = {
             "model": self.config.model,
             "temperature": 0.0,
-            "max_completion_tokens": self.config.max_completion_tokens,
+            "max_completion_tokens": max_completion_tokens or self.config.max_completion_tokens,
             "chat_template_kwargs": {"enable_thinking": False},
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": user_text},
-                        {"type": "image_url", "image_url": {"url": image_data_url}},
-                    ],
-                },
-            ],
+            "messages": messages,
         }
         if response_format is not None:
             payload["response_format"] = response_format
@@ -41,9 +49,11 @@ class VLLMClient:
     async def create_chat_completion(
         self,
         *,
-        system_prompt: str,
-        user_text: str,
-        image_data_url: str,
+        system_prompt: Optional[str],
+        user_text: Optional[str],
+        image_data_url: Optional[str],
+        max_completion_tokens: Optional[int],
+        timeout_seconds: Optional[int],
         response_format: dict[str, Any] | None,
         log: RequestLog,
         label: str,
@@ -51,13 +61,16 @@ class VLLMClient:
         log.add(f"Sending {label} request to vLLM at {self.config.vllm_base_url}")
 
         try:
-            async with httpx.AsyncClient(timeout=self.config.timeout_seconds) as client:
+            async with httpx.AsyncClient(
+                timeout=timeout_seconds or self.config.timeout_seconds
+            ) as client:
                 response = await client.post(
                     f"{self.config.vllm_base_url.rstrip('/')}/chat/completions",
                     json=self.create_payload(
                         system_prompt=system_prompt,
                         user_text=user_text,
                         image_data_url=image_data_url,
+                        max_completion_tokens=max_completion_tokens,
                         response_format=response_format,
                     ),
                 )
@@ -86,4 +99,3 @@ class VLLMClient:
 
         log.add(f"Received {label} response from vLLM")
         return payload
-
