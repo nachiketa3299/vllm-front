@@ -28,7 +28,7 @@ class AppConfig:
         return cls(
             vllm_base_url=os.environ.get("VLLM_BASE_URL", "http://127.0.0.1:8000/v1"),
             max_completion_tokens=int(
-                os.environ.get("VLLM_MAX_COMPLETION_TOKENS", "10000")
+                os.environ.get("VLLM_MAX_COMPLETION_TOKENS", "20000")
             ),
             timeout_seconds=int(os.environ.get("VLLM_TIMEOUT_SECONDS", "600")),
             max_image_bytes=15 * 1024 * 1024,
