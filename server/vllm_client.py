@@ -93,6 +93,7 @@ class VLLMClient:
         max_completion_tokens: Optional[int] = None,
         response_format: dict[str, Any] | None = None,
         enable_thinking: bool = False,
+        temperature: float = 0.0,
     ) -> dict[str, Any]:
         user_content: list[dict[str, Any]] = []
         if user_text:
@@ -112,7 +113,7 @@ class VLLMClient:
 
         payload = {
             "model": model,
-            "temperature": 0.0,
+            "temperature": float(temperature),
             "max_completion_tokens": max_completion_tokens or self.config.max_completion_tokens,
             "chat_template_kwargs": {"enable_thinking": bool(enable_thinking)},
             "messages": messages,
@@ -131,6 +132,7 @@ class VLLMClient:
         timeout_seconds: Optional[int],
         response_format: dict[str, Any] | None,
         enable_thinking: bool,
+        temperature: float,
         log: RequestLog,
         label: str,
     ) -> dict[str, Any]:
@@ -153,6 +155,7 @@ class VLLMClient:
                         max_completion_tokens=max_completion_tokens,
                         response_format=response_format,
                         enable_thinking=enable_thinking,
+                        temperature=temperature,
                     ),
                 )
                 response.raise_for_status()

@@ -32,6 +32,7 @@ class GenerationService:
         max_image_bytes: Optional[int] = None,
         json_output: Optional[bool] = None,
         enable_thinking: Optional[bool] = None,
+        temperature: Optional[float] = None,
     ) -> GeneratedPayload:
         note = (user_request or "").strip()
         if self.prompt_logger is not None:
@@ -57,6 +58,7 @@ class GenerationService:
         )
         resolved_json_output = bool(json_output)
         resolved_enable_thinking = bool(enable_thinking)
+        resolved_temperature = self._resolve_temperature(temperature)
 
         prepared_image = None
         if upload is not None:
@@ -83,7 +85,8 @@ class GenerationService:
             f"timeout_seconds={resolved_timeout_seconds}, "
             f"max_image_bytes={resolved_max_image_bytes}, "
             f"json_output={resolved_json_output}, "
-            f"enable_thinking={resolved_enable_thinking}"
+            f"enable_thinking={resolved_enable_thinking}, "
+            f"temperature={resolved_temperature}"
         )
 
         output_text, reasoning_text = await self._generate_text(
@@ -93,6 +96,7 @@ class GenerationService:
             timeout_seconds=resolved_timeout_seconds,
             json_output=resolved_json_output,
             enable_thinking=resolved_enable_thinking,
+            temperature=resolved_temperature,
             log=log,
         )
 
@@ -107,6 +111,7 @@ class GenerationService:
         timeout_seconds: int,
         json_output: bool,
         enable_thinking: bool,
+        temperature: float,
         log: RequestLog,
     ) -> tuple[str, str]:
         response = await self.client.create_chat_completion(
@@ -117,6 +122,7 @@ class GenerationService:
             max_completion_tokens=max_completion_tokens,
             timeout_seconds=timeout_seconds,
             enable_thinking=enable_thinking,
+            temperature=temperature,
             log=log,
             label="generation",
         )
@@ -133,4 +139,11 @@ class GenerationService:
         value = default if override is None else override
         if value <= 0:
             raise AppError(400, f"{field_name} must be a positive integer.")
+        return value
+
+    @staticmethod
+    def _resolve_temperature(override: Optional[float]) -> float:
+        value = 0.0 if override is None else float(override)
+        if value < 0:
+            raise AppError(400, "temperature must be >= 0.")
         return value

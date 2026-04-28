@@ -53,21 +53,19 @@ def create_router(
                     "description": "한 응답에서 생성할 최대 토큰 수. 크게 두면 긴 답변이 가능하지만 컨텍스트 예산을 더 소모합니다.",
                     "value": str(config.max_completion_tokens),
                     "editable": True,
+                    "control": "number",
+                    "min": "1",
+                    "step": "1",
                 },
                 {
-                    "key": "timeout_seconds",
-                    "label": "응답 타임아웃 (초)",
-                    "description": "서버 응답을 기다리는 최대 시간(초). 짧게 두면 긴 출력이 완료 직전 끊길 수 있습니다.",
-                    "value": str(config.timeout_seconds),
-                    "editable": True,
-                },
-                {
-                    "key": "max_image_bytes",
-                    "label": "최대 이미지 크기 (바이트)",
-                    "description": "업로드 이미지 한 장의 최대 파일 크기(바이트). 초과하면 요청이 거부됩니다.",
-                    "value": str(config.max_image_bytes),
+                    "key": "temperature",
+                    "label": "샘플링 온도 (temperature)",
+                    "description": "0.0이면 결정론적(매번 같은 답), 1.0이면 다양한 답. 보통 0.0~1.0 범위. 자동화/정확성엔 0.0, 창의적 작업엔 0.7~1.0.",
+                    "value": "0.0",
                     "editable": True,
                     "control": "number",
+                    "min": "0",
+                    "step": "0.1",
                 },
                 {
                     "key": "json_output",
@@ -85,7 +83,21 @@ def create_router(
                     "editable": True,
                     "control": "checkbox",
                 },
-            ]
+            ],
+            "info_entries": [
+                {
+                    "key": "max_image_bytes",
+                    "label": "최대 이미지 크기 (바이트)",
+                    "description": "vllm-front 가 업로드를 거부하는 한도. vLLM 에는 전송되지 않음.",
+                    "value": str(config.max_image_bytes),
+                },
+                {
+                    "key": "timeout_seconds",
+                    "label": "응답 타임아웃 (초)",
+                    "description": "vllm-front 가 vLLM 응답을 기다리는 최대 시간. vLLM 자체 추론 시간 제한이 아니며, vLLM 에 전송되지 않음.",
+                    "value": str(config.timeout_seconds),
+                },
+            ],
         }
 
     @router.get("/api/runtime")
@@ -148,6 +160,7 @@ def create_router(
         max_image_bytes: Optional[int] = Form(default=None),
         json_output: Optional[bool] = Form(default=None),
         enable_thinking: Optional[bool] = Form(default=None),
+        temperature: Optional[float] = Form(default=None),
     ) -> Response:
         log = RequestLog(entries=[])
         generation_task = asyncio.create_task(
@@ -160,6 +173,7 @@ def create_router(
                 max_image_bytes=max_image_bytes,
                 json_output=json_output,
                 enable_thinking=enable_thinking,
+                temperature=temperature,
             )
         )
         disconnect_task = asyncio.create_task(wait_for_disconnect(request))

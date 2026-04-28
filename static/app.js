@@ -6,6 +6,7 @@ const dropzone = document.getElementById("dropzone");
 const previewImage = document.getElementById("preview-image");
 const userRequestInput = document.getElementById("user-request-input");
 const configTableBody = document.getElementById("config-table-body");
+const configInfoTableBody = document.getElementById("config-info-table-body");
 const textPreview = document.getElementById("text-preview");
 const reasoningPanel = document.getElementById("reasoning-panel");
 const reasoningPreview = document.getElementById("reasoning-preview");
@@ -275,10 +276,6 @@ async function estimateTokenBudget() {
     "max_completion_tokens",
     configInputs.get("max_completion_tokens")?.value?.trim() || "0"
   );
-  formData.append(
-    "max_image_bytes",
-    configInputs.get("max_image_bytes")?.value?.trim() || "0"
-  );
 
   try {
     const payload = await fetchJson("/api/token-budget", {
@@ -378,7 +375,7 @@ async function generate() {
     formData.append("image", selectedFile);
   }
   formData.append("user_request", userRequest);
-  for (const key of ["max_completion_tokens", "timeout_seconds", "max_image_bytes"]) {
+  for (const key of ["max_completion_tokens", "temperature"]) {
     const input = configInputs.get(key);
     if (input && input.value.trim()) {
       formData.append(key, input.value.trim());
@@ -476,8 +473,8 @@ function renderConfigEntries(entries) {
       } else {
         const input = document.createElement("input");
         input.type = "number";
-        input.min = "1";
-        input.step = "1";
+        input.min = typeof entry.min === "string" ? entry.min : "1";
+        input.step = typeof entry.step === "string" ? entry.step : "1";
         input.className = "config-input";
         input.value = `${entry.value ?? ""}`;
         input.dataset.configKey = entry.key;
@@ -495,13 +492,46 @@ function renderConfigEntries(entries) {
     configTableBody.appendChild(row);
   });
 
-  ["max_completion_tokens", "max_image_bytes"].forEach((key) => {
+  ["max_completion_tokens"].forEach((key) => {
     const input = configInputs.get(key);
     if (!input) {
       return;
     }
     input.addEventListener("input", scheduleBudgetEstimate);
     input.addEventListener("change", scheduleBudgetEstimate);
+  });
+}
+
+function renderConfigInfoEntries(entries) {
+  if (!configInfoTableBody) {
+    return;
+  }
+  configInfoTableBody.innerHTML = "";
+  if (!Array.isArray(entries) || entries.length === 0) {
+    return;
+  }
+  entries.forEach((entry) => {
+    const row = document.createElement("tr");
+    const keyCell = document.createElement("td");
+    const valueCell = document.createElement("td");
+
+    keyCell.textContent = typeof entry.label === "string" ? entry.label : entry.key;
+    if (typeof entry.key === "string" && entry.key) {
+      const tipLines = [entry.key];
+      if (typeof entry.description === "string" && entry.description) {
+        tipLines.push(entry.description);
+      }
+      keyCell.dataset.tip = tipLines.join("\n");
+      keyCell.classList.add("config-key-cell");
+    }
+
+    const code = document.createElement("code");
+    code.textContent = `${entry.value ?? ""}`;
+    valueCell.appendChild(code);
+
+    row.appendChild(keyCell);
+    row.appendChild(valueCell);
+    configInfoTableBody.appendChild(row);
   });
 }
 
@@ -512,6 +542,7 @@ async function loadConfig() {
       throw new Error("설정 정보를 불러오지 못했습니다.");
     }
     renderConfigEntries(payload.entries);
+    renderConfigInfoEntries(payload.info_entries);
     scheduleBudgetEstimate();
   } catch (error) {
     const message =
