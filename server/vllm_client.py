@@ -69,13 +69,9 @@ class VLLMClient:
         except (TypeError, ValueError):
             max_model_len = None
 
-        root = first.get("root")
-        model_path = root if isinstance(root, str) and root else None
-
         return ProbedModelInfo(
             model=model_id,
             max_model_len=max_model_len,
-            model_path=model_path,
         )
 
     async def require_model_info(self) -> ProbedModelInfo:

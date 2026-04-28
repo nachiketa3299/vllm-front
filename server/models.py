@@ -32,7 +32,6 @@ class GeneratedPayload:
 class ProbedModelInfo:
     model: str
     max_model_len: Optional[int]
-    model_path: Optional[str]
 
 
 class AppError(Exception):

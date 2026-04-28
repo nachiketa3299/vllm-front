@@ -122,17 +122,15 @@ def create_router(
         info = await client.require_model_info()
         if info.max_model_len is None:
             raise AppError(503, "vLLM 서버가 max_model_len을 보고하지 않아서 토큰 예산을 계산할 수 없습니다.")
-        if not info.model_path:
-            raise AppError(503, "vLLM 서버가 모델 경로를 보고하지 않아서 토큰 예산을 계산할 수 없습니다.")
 
         try:
-            return token_budget.estimate(
+            return await token_budget.estimate(
                 upload=image,
                 user_request=user_request,
                 max_completion_tokens=max_completion_tokens or config.max_completion_tokens,
                 max_model_len=info.max_model_len,
                 max_image_bytes=max_image_bytes or config.max_image_bytes,
-                model_path=info.model_path,
+                model=info.model,
             )
         except AppError as exc:
             return JSONResponse(
