@@ -763,10 +763,10 @@ pre {
   overflow-wrap: anywhere;
 }
 
-/* 사고 패널은 보조 정보 — 수정 불가 톤 + 작게 + 짧게 + 스크롤 */
+/* 사고 패널은 보조 정보 — 수정 불가 톤 + 작게 + 스크롤 */
 #reasoning-preview {
-  min-height: 80px;
-  max-height: 180px;
+  min-height: 120px;
+  max-height: 360px;
   font-size: 0.72rem;
   color: var(--muted);
   background: rgba(255, 255, 255, 0.02);

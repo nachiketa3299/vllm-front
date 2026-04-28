@@ -30,7 +30,7 @@ class AppConfig:
             max_completion_tokens=int(
                 os.environ.get("VLLM_MAX_COMPLETION_TOKENS", "20000")
             ),
-            timeout_seconds=int(os.environ.get("VLLM_TIMEOUT_SECONDS", "600")),
+            timeout_seconds=int(os.environ.get("VLLM_TIMEOUT_SECONDS", "1800")),
             max_image_bytes=15 * 1024 * 1024,
         )
 
