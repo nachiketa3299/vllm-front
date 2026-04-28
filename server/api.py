@@ -92,12 +92,6 @@ def create_router(
                     "description": "vllm-front 가 업로드를 거부하는 한도 (킬로바이트, 1 KB = 1024 B). vLLM 에는 전송되지 않음.",
                     "value": f"{config.max_image_bytes // 1024} KB",
                 },
-                {
-                    "key": "timeout_seconds",
-                    "label": "응답 타임아웃 (초)",
-                    "description": "vllm-front 가 vLLM 응답을 기다리는 최대 시간. vLLM 자체 추론 시간 제한이 아니며, vLLM 에 전송되지 않음.",
-                    "value": str(config.timeout_seconds),
-                },
             ],
         }
 
@@ -156,7 +150,6 @@ def create_router(
         image: Optional[UploadFile] = File(default=None),
         user_request: Optional[str] = Form(default=None),
         max_completion_tokens: Optional[int] = Form(default=None),
-        timeout_seconds: Optional[int] = Form(default=None),
         max_image_bytes: Optional[int] = Form(default=None),
         json_output: Optional[bool] = Form(default=None),
         enable_thinking: Optional[bool] = Form(default=None),
@@ -177,7 +170,6 @@ def create_router(
                     log,
                     user_request=user_request,
                     max_completion_tokens=max_completion_tokens,
-                    timeout_seconds=timeout_seconds,
                     max_image_bytes=max_image_bytes,
                     json_output=json_output,
                     enable_thinking=enable_thinking,

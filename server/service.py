@@ -28,7 +28,6 @@ class GenerationService:
         log: RequestLog,
         user_request: Optional[str] = None,
         max_completion_tokens: Optional[int] = None,
-        timeout_seconds: Optional[int] = None,
         max_image_bytes: Optional[int] = None,
         json_output: Optional[bool] = None,
         enable_thinking: Optional[bool] = None,
@@ -45,11 +44,6 @@ class GenerationService:
             field_name="max_completion_tokens",
             override=max_completion_tokens,
             default=self.config.max_completion_tokens,
-        )
-        resolved_timeout_seconds = self._resolve_positive_int(
-            field_name="timeout_seconds",
-            override=timeout_seconds,
-            default=self.config.timeout_seconds,
         )
         resolved_max_image_bytes = self._resolve_positive_int(
             field_name="max_image_bytes",
@@ -82,7 +76,6 @@ class GenerationService:
         log.add(
             "Using request config: "
             f"max_completion_tokens={resolved_max_completion_tokens}, "
-            f"timeout_seconds={resolved_timeout_seconds}, "
             f"max_image_bytes={resolved_max_image_bytes}, "
             f"json_output={resolved_json_output}, "
             f"enable_thinking={resolved_enable_thinking}, "
@@ -93,7 +86,6 @@ class GenerationService:
             image_data_url=prepared_image.data_url if prepared_image is not None else None,
             user_request=note,
             max_completion_tokens=resolved_max_completion_tokens,
-            timeout_seconds=resolved_timeout_seconds,
             json_output=resolved_json_output,
             enable_thinking=resolved_enable_thinking,
             temperature=resolved_temperature,
@@ -108,7 +100,6 @@ class GenerationService:
         image_data_url: Optional[str],
         user_request: str,
         max_completion_tokens: int,
-        timeout_seconds: int,
         json_output: bool,
         enable_thinking: bool,
         temperature: float,
@@ -120,7 +111,6 @@ class GenerationService:
             image_data_url=image_data_url,
             response_format={"type": "json_object"} if json_output else None,
             max_completion_tokens=max_completion_tokens,
-            timeout_seconds=timeout_seconds,
             enable_thinking=enable_thinking,
             temperature=temperature,
             log=log,
@@ -154,7 +144,6 @@ class GenerationService:
         log: RequestLog,
         user_request: Optional[str] = None,
         max_completion_tokens: Optional[int] = None,
-        timeout_seconds: Optional[int] = None,
         max_image_bytes: Optional[int] = None,
         json_output: Optional[bool] = None,
         enable_thinking: Optional[bool] = None,
@@ -173,11 +162,6 @@ class GenerationService:
             field_name="max_completion_tokens",
             override=max_completion_tokens,
             default=self.config.max_completion_tokens,
-        )
-        resolved_timeout_seconds = self._resolve_positive_int(
-            field_name="timeout_seconds",
-            override=timeout_seconds,
-            default=self.config.timeout_seconds,
         )
         resolved_max_image_bytes = self._resolve_positive_int(
             field_name="max_image_bytes",
@@ -206,7 +190,6 @@ class GenerationService:
         log.add(
             "Using request config: "
             f"max_completion_tokens={resolved_max_completion_tokens}, "
-            f"timeout_seconds={resolved_timeout_seconds}, "
             f"json_output={resolved_json_output}, "
             f"enable_thinking={resolved_enable_thinking}, "
             f"temperature={resolved_temperature}"
@@ -220,7 +203,6 @@ class GenerationService:
             ),
             response_format={"type": "json_object"} if resolved_json_output else None,
             max_completion_tokens=resolved_max_completion_tokens,
-            timeout_seconds=resolved_timeout_seconds,
             enable_thinking=resolved_enable_thinking,
             temperature=resolved_temperature,
             log=log,

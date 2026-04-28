@@ -20,7 +20,6 @@ class AppPaths:
 class AppConfig:
     vllm_base_url: str
     max_completion_tokens: int
-    timeout_seconds: int
     max_image_bytes: int
 
     @classmethod
@@ -30,7 +29,6 @@ class AppConfig:
             max_completion_tokens=int(
                 os.environ.get("VLLM_MAX_COMPLETION_TOKENS", "20000")
             ),
-            timeout_seconds=int(os.environ.get("VLLM_TIMEOUT_SECONDS", "1800")),
             max_image_bytes=15 * 1024 * 1024,
         )
 

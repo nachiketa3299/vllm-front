@@ -9,6 +9,11 @@ from .config import AppConfig
 from .models import AppError, ProbedModelInfo, RequestLog
 
 
+# vLLM 추론은 매우 길 수 있어(thinking 모드 + 큰 max_completion_tokens).
+# read 는 무제한으로 두고 connect/write/pool 만 짧게 — 비정상 상황에서만 끊김.
+_VLLM_HTTPX_TIMEOUT = httpx.Timeout(connect=10.0, read=None, write=10.0, pool=10.0)
+
+
 class VLLMClient:
     _PROBE_TTL_SECONDS = 5.0
     _PROBE_TIMEOUT_SECONDS = 5.0
@@ -130,7 +135,6 @@ class VLLMClient:
         user_text: Optional[str],
         image_data_url: Optional[str],
         max_completion_tokens: Optional[int],
-        timeout_seconds: Optional[int],
         response_format: dict[str, Any] | None,
         enable_thinking: bool,
         temperature: float,
@@ -143,9 +147,7 @@ class VLLMClient:
         )
 
         try:
-            async with httpx.AsyncClient(
-                timeout=timeout_seconds or self.config.timeout_seconds
-            ) as client:
+            async with httpx.AsyncClient(timeout=_VLLM_HTTPX_TIMEOUT) as client:
                 response = await client.post(
                     f"{self.config.vllm_base_url.rstrip('/')}/chat/completions",
                     json=self.create_payload(
@@ -192,7 +194,6 @@ class VLLMClient:
         user_text: Optional[str],
         image_data_url: Optional[str],
         max_completion_tokens: Optional[int],
-        timeout_seconds: Optional[int],
         response_format: dict[str, Any] | None,
         enable_thinking: bool,
         temperature: float,
@@ -219,10 +220,9 @@ class VLLMClient:
         payload["stream"] = True
 
         url = f"{self.config.vllm_base_url.rstrip('/')}/chat/completions"
-        timeout = timeout_seconds or self.config.timeout_seconds
 
         try:
-            async with httpx.AsyncClient(timeout=timeout) as client:
+            async with httpx.AsyncClient(timeout=_VLLM_HTTPX_TIMEOUT) as client:
                 async with client.stream("POST", url, json=payload) as response:
                     if response.status_code >= 400:
                         body = (await response.aread()).decode("utf-8", errors="replace")
