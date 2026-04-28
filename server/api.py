@@ -59,8 +59,8 @@ def create_router(
                 },
                 {
                     "key": "temperature",
-                    "label": "샘플링 온도 (temperature)",
-                    "description": "0.0이면 결정론적(매번 같은 답), 1.0이면 다양한 답. 보통 0.0~1.0 범위. 자동화/정확성엔 0.0, 창의적 작업엔 0.7~1.0.",
+                    "label": "온도",
+                    "description": "샘플링 온도 (temperature). 0.0이면 결정론적(매번 같은 답), 1.0이면 다양한 답. 보통 0.0~1.0 범위. 자동화/정확성엔 0.0, 창의적 작업엔 0.7~1.0.",
                     "value": "0.0",
                     "editable": True,
                     "control": "number",

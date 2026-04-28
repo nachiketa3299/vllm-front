@@ -232,7 +232,7 @@ h1 {
 
 .config-table-compact .config-table th:first-child,
 .config-table-compact .config-table td:first-child {
-  width: auto;
+  width: 220px;
   white-space: nowrap;
 }
 
