@@ -84,20 +84,6 @@ def create_router(
                     "control": "checkbox",
                 },
             ],
-            "info_entries": [
-                {
-                    "key": "max_image_bytes",
-                    "label": "최대 이미지 크기 (바이트)",
-                    "description": "vllm-front 가 업로드를 거부하는 한도. vLLM 에는 전송되지 않음.",
-                    "value": str(config.max_image_bytes),
-                },
-                {
-                    "key": "timeout_seconds",
-                    "label": "응답 타임아웃 (초)",
-                    "description": "vllm-front 가 vLLM 응답을 기다리는 최대 시간. vLLM 자체 추론 시간 제한이 아니며, vLLM 에 전송되지 않음.",
-                    "value": str(config.timeout_seconds),
-                },
-            ],
         }
 
     @router.get("/api/runtime")

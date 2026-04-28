@@ -6,7 +6,6 @@ const dropzone = document.getElementById("dropzone");
 const previewImage = document.getElementById("preview-image");
 const userRequestInput = document.getElementById("user-request-input");
 const configTableBody = document.getElementById("config-table-body");
-const configInfoTableBody = document.getElementById("config-info-table-body");
 const textPreview = document.getElementById("text-preview");
 const reasoningPanel = document.getElementById("reasoning-panel");
 const reasoningPreview = document.getElementById("reasoning-preview");
@@ -502,39 +501,6 @@ function renderConfigEntries(entries) {
   });
 }
 
-function renderConfigInfoEntries(entries) {
-  if (!configInfoTableBody) {
-    return;
-  }
-  configInfoTableBody.innerHTML = "";
-  if (!Array.isArray(entries) || entries.length === 0) {
-    return;
-  }
-  entries.forEach((entry) => {
-    const row = document.createElement("tr");
-    const keyCell = document.createElement("td");
-    const valueCell = document.createElement("td");
-
-    keyCell.textContent = typeof entry.label === "string" ? entry.label : entry.key;
-    if (typeof entry.key === "string" && entry.key) {
-      const tipLines = [entry.key];
-      if (typeof entry.description === "string" && entry.description) {
-        tipLines.push(entry.description);
-      }
-      keyCell.dataset.tip = tipLines.join("\n");
-      keyCell.classList.add("config-key-cell");
-    }
-
-    const code = document.createElement("code");
-    code.textContent = `${entry.value ?? ""}`;
-    valueCell.appendChild(code);
-
-    row.appendChild(keyCell);
-    row.appendChild(valueCell);
-    configInfoTableBody.appendChild(row);
-  });
-}
-
 async function loadConfig() {
   try {
     const payload = await fetchJson("/api/config");
@@ -542,7 +508,6 @@ async function loadConfig() {
       throw new Error("설정 정보를 불러오지 못했습니다.");
     }
     renderConfigEntries(payload.entries);
-    renderConfigInfoEntries(payload.info_entries);
     scheduleBudgetEstimate();
   } catch (error) {
     const message =
