@@ -87,9 +87,9 @@ def create_router(
             "info_entries": [
                 {
                     "key": "max_image_bytes",
-                    "label": "최대 이미지 크기 (바이트)",
-                    "description": "vllm-front 가 업로드를 거부하는 한도. vLLM 에는 전송되지 않음.",
-                    "value": str(config.max_image_bytes),
+                    "label": "최대 이미지 크기 (KB)",
+                    "description": "vllm-front 가 업로드를 거부하는 한도 (킬로바이트, 1 KB = 1024 B). vLLM 에는 전송되지 않음.",
+                    "value": f"{config.max_image_bytes // 1024} KB",
                 },
                 {
                     "key": "timeout_seconds",
