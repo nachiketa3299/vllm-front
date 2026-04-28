@@ -1,6 +1,7 @@
 import asyncio
+import json
 import time
-from typing import Any, Optional
+from typing import Any, AsyncIterator, Optional
 
 import httpx
 
@@ -183,3 +184,76 @@ class VLLMClient:
 
         log.add(f"Received {label} response from vLLM")
         return payload
+
+    async def stream_chat_completion(
+        self,
+        *,
+        system_prompt: Optional[str],
+        user_text: Optional[str],
+        image_data_url: Optional[str],
+        max_completion_tokens: Optional[int],
+        timeout_seconds: Optional[int],
+        response_format: dict[str, Any] | None,
+        enable_thinking: bool,
+        temperature: float,
+        log: RequestLog,
+    ) -> AsyncIterator[dict[str, str]]:
+        """vLLM /chat/completions 를 stream=true 로 호출. 한 chunk 당
+        ``{"reasoning": ..., "content": ...}`` 둘 중 하나(또는 둘 다)를 yield."""
+        info = await self.require_model_info()
+        log.add(
+            f"Streaming from vLLM at {self.config.vllm_base_url} "
+            f"(model={info.model})"
+        )
+
+        payload = self.create_payload(
+            model=info.model,
+            system_prompt=system_prompt,
+            user_text=user_text,
+            image_data_url=image_data_url,
+            max_completion_tokens=max_completion_tokens,
+            response_format=response_format,
+            enable_thinking=enable_thinking,
+            temperature=temperature,
+        )
+        payload["stream"] = True
+
+        url = f"{self.config.vllm_base_url.rstrip('/')}/chat/completions"
+        timeout = timeout_seconds or self.config.timeout_seconds
+
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                async with client.stream("POST", url, json=payload) as response:
+                    if response.status_code >= 400:
+                        body = (await response.aread()).decode("utf-8", errors="replace")
+                        raise AppError(
+                            502,
+                            f"vLLM returned HTTP {response.status_code}: {body}",
+                        )
+                    async for line in response.aiter_lines():
+                        if not line or not line.startswith("data: "):
+                            continue
+                        data_str = line[6:]
+                        if data_str.strip() == "[DONE]":
+                            return
+                        try:
+                            data = json.loads(data_str)
+                        except json.JSONDecodeError:
+                            continue
+                        choices = data.get("choices") or []
+                        if not choices:
+                            continue
+                        delta = choices[0].get("delta") or {}
+                        chunk: dict[str, str] = {}
+                        reasoning = delta.get("reasoning_content")
+                        if isinstance(reasoning, str) and reasoning:
+                            chunk["reasoning"] = reasoning
+                        content = delta.get("content")
+                        if isinstance(content, str) and content:
+                            chunk["content"] = content
+                        if chunk:
+                            yield chunk
+        except httpx.RequestError as exc:
+            raise AppError(
+                502, f"Failed to connect to vLLM at {self.config.vllm_base_url}."
+            ) from exc

@@ -11,6 +11,7 @@ const textPreview = document.getElementById("text-preview");
 const reasoningPanel = document.getElementById("reasoning-panel");
 const reasoningPreview = document.getElementById("reasoning-preview");
 const copyOutputButton = document.getElementById("copy-output-button");
+const generationElapsedEl = document.getElementById("generation-elapsed");
 const logOutput = document.getElementById("log-output");
 const modelStatusBadge = document.getElementById("model-status-badge");
 const modelRuntimeModel = document.getElementById("model-runtime-model");
@@ -136,9 +137,27 @@ function setReasoning(text) {
   reasoningPanel.hidden = value.length === 0;
 }
 
+function appendOutput(chunk) {
+  textPreview.textContent += chunk;
+  updateCopyButtonState();
+}
+
+function appendReasoning(chunk) {
+  reasoningPreview.textContent += chunk;
+  if (reasoningPreview.textContent.length > 0) {
+    reasoningPanel.hidden = false;
+  }
+}
+
 function resetGeneratedState() {
   setPreview(textPreview, "");
   setReasoning("");
+  if (generationElapsedEl) generationElapsedEl.textContent = "";
+}
+
+function setGenerationElapsed(seconds) {
+  if (!generationElapsedEl) return;
+  generationElapsedEl.textContent = `${seconds.toFixed(1)}s`;
 }
 
 function hasPromptText() {
@@ -417,30 +436,76 @@ async function generate() {
       body: formData,
     });
 
-    const rawText = await response.text();
-    let payload;
-    try {
-      payload = JSON.parse(rawText);
-    } catch {
-      throw new Error(rawText || `서버가 JSON이 아닌 응답을 반환했습니다. HTTP ${response.status}`);
+    if (!response.ok || !response.body) {
+      const text = await response.text().catch(() => "");
+      throw new Error(text || `생성 요청 실패 (HTTP ${response.status})`);
     }
 
-    appendLogs(payload.logs);
-    if (!response.ok) {
-      throw new Error(payload.detail || `생성에 실패했습니다. HTTP ${response.status}`);
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder("utf-8");
+    let buffer = "";
+    let receivedDone = false;
+    let receivedError = null;
+    let receivedLogs = null;
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      // SSE event 단위 분리: \n\n
+      while (true) {
+        const idx = buffer.indexOf("\n\n");
+        if (idx === -1) break;
+        const rawEvent = buffer.slice(0, idx);
+        buffer = buffer.slice(idx + 2);
+
+        if (!rawEvent.startsWith("data: ")) continue;
+        const dataStr = rawEvent.slice(6);
+        let data;
+        try {
+          data = JSON.parse(dataStr);
+        } catch {
+          continue;
+        }
+
+        if (typeof data.error === "string") {
+          receivedError = data.error;
+          if (Array.isArray(data.logs)) receivedLogs = data.logs;
+          continue;
+        }
+        if (data.done) {
+          receivedDone = true;
+          if (Array.isArray(data.logs)) receivedLogs = data.logs;
+          continue;
+        }
+        if (typeof data.reasoning === "string" && data.reasoning) {
+          appendReasoning(data.reasoning);
+        }
+        if (typeof data.content === "string" && data.content) {
+          appendOutput(data.content);
+        }
+      }
     }
 
-    setPreview(textPreview, typeof payload.output_text === "string" ? payload.output_text : "");
-    setReasoning(typeof payload.reasoning_text === "string" ? payload.reasoning_text : "");
-    setStatus("생성이 완료되었습니다. 출력 텍스트를 확인하세요.");
+    if (receivedLogs) appendLogs(receivedLogs);
+    if (receivedError) throw new Error(receivedError);
+    if (!receivedDone) {
+      appendLog("스트리밍이 완료 신호 없이 종료됨");
+    }
+
     const elapsedSec = generationStartedAt !== null
       ? (Date.now() - generationStartedAt) / 1000
       : 0;
+    setGenerationElapsed(elapsedSec);
     appendLog(`✓ 생성 완료 (${elapsedSec.toFixed(1)}s)`, { force: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : "생성에 실패했습니다.";
-    setStatus(message, true);
-    appendLog(message);
+    appendLog(`[ERROR] ${message}`);
+    const elapsedSec = generationStartedAt !== null
+      ? (Date.now() - generationStartedAt) / 1000
+      : 0;
+    if (elapsedSec > 0) setGenerationElapsed(elapsedSec);
   } finally {
     stopGenerationTimer();
     generationInFlight = false;

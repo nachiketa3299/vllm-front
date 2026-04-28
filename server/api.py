@@ -1,9 +1,10 @@
 import asyncio
 import contextlib
+import json
 from typing import Optional
 
 from fastapi import APIRouter, File, Form, Request, Response, UploadFile
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 
 from .config import AppConfig, AppPaths
 from .models import AppError, RequestLog
@@ -152,7 +153,6 @@ def create_router(
 
     @router.post("/api/generate")
     async def generate(
-        request: Request,
         image: Optional[UploadFile] = File(default=None),
         user_request: Optional[str] = Form(default=None),
         max_completion_tokens: Optional[int] = Form(default=None),
@@ -161,61 +161,63 @@ def create_router(
         json_output: Optional[bool] = Form(default=None),
         enable_thinking: Optional[bool] = Form(default=None),
         temperature: Optional[float] = Form(default=None),
-    ) -> Response:
+    ) -> StreamingResponse:
+        """SSE 스트리밍. 각 이벤트 형식:
+            data: {"reasoning": "..."}        # <think> 안쪽 토큰 chunk
+            data: {"content": "..."}          # 본문 토큰 chunk
+            data: {"done": true, "logs": [..]}  # 정상 종료
+            data: {"error": "...", "status": 502, "logs": [..]}  # 실패
+        """
         log = RequestLog(entries=[])
-        generation_task = asyncio.create_task(
-            service.generate(
-                image,
-                log,
-                user_request=user_request,
-                max_completion_tokens=max_completion_tokens,
-                timeout_seconds=timeout_seconds,
-                max_image_bytes=max_image_bytes,
-                json_output=json_output,
-                enable_thinking=enable_thinking,
-                temperature=temperature,
-            )
-        )
-        disconnect_task = asyncio.create_task(wait_for_disconnect(request))
 
-        try:
-            done, _ = await asyncio.wait(
-                {generation_task, disconnect_task},
-                return_when=asyncio.FIRST_COMPLETED,
-            )
+        async def event_stream():
+            try:
+                async for chunk in service.generate_stream(
+                    image,
+                    log,
+                    user_request=user_request,
+                    max_completion_tokens=max_completion_tokens,
+                    timeout_seconds=timeout_seconds,
+                    max_image_bytes=max_image_bytes,
+                    json_output=json_output,
+                    enable_thinking=enable_thinking,
+                    temperature=temperature,
+                ):
+                    yield f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n"
+                yield (
+                    "data: "
+                    + json.dumps({"done": True, "logs": log.entries}, ensure_ascii=False)
+                    + "\n\n"
+                )
+            except AppError as exc:
+                log.add(f"[ERROR] {exc.detail}")
+                yield (
+                    "data: "
+                    + json.dumps(
+                        {
+                            "error": exc.detail,
+                            "status": exc.status_code,
+                            "logs": log.entries,
+                        },
+                        ensure_ascii=False,
+                    )
+                    + "\n\n"
+                )
+            except asyncio.CancelledError:
+                log.add("Request cancelled")
+                raise
+            except Exception as exc:
+                detail = f"Unhandled server error: {type(exc).__name__}: {exc}"
+                log.add(f"[ERROR] {detail}")
+                yield (
+                    "data: "
+                    + json.dumps(
+                        {"error": detail, "status": 500, "logs": log.entries},
+                        ensure_ascii=False,
+                    )
+                    + "\n\n"
+                )
 
-            if disconnect_task in done:
-                log.add("Client disconnected; cancelling vLLM request")
-                generation_task.cancel()
-                with contextlib.suppress(asyncio.CancelledError):
-                    await generation_task
-                return Response(status_code=499)
-
-            disconnect_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await disconnect_task
-
-            generated = await generation_task
-            return JSONResponse(
-                {
-                    "output_text": generated.text,
-                    "reasoning_text": generated.reasoning,
-                    "logs": log.entries,
-                }
-            )
-        except AppError as exc:
-            return error_response(exc.status_code, exc.detail, log.entries)
-        except asyncio.CancelledError:
-            log.add("Request cancelled")
-            return Response(status_code=499)
-        except Exception as exc:
-            detail = f"Unhandled server error: {type(exc).__name__}: {exc}"
-            return error_response(500, detail, log.entries)
-        finally:
-            for task in (generation_task, disconnect_task):
-                if not task.done():
-                    task.cancel()
-                    with contextlib.suppress(asyncio.CancelledError):
-                        await task
+        return StreamingResponse(event_stream(), media_type="text/event-stream")
 
     return router

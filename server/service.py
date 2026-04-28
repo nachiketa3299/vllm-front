@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import AsyncIterator, Optional
 
 from fastapi import UploadFile
 
@@ -147,3 +147,84 @@ class GenerationService:
         if value < 0:
             raise AppError(400, "temperature must be >= 0.")
         return value
+
+    async def generate_stream(
+        self,
+        upload: Optional[UploadFile],
+        log: RequestLog,
+        user_request: Optional[str] = None,
+        max_completion_tokens: Optional[int] = None,
+        timeout_seconds: Optional[int] = None,
+        max_image_bytes: Optional[int] = None,
+        json_output: Optional[bool] = None,
+        enable_thinking: Optional[bool] = None,
+        temperature: Optional[float] = None,
+    ) -> AsyncIterator[dict[str, str]]:
+        """Streaming 버전. chunk dict 를 yield. 끝에 done 표시는 없음 — 호출자가
+        generator 종료를 done 으로 해석."""
+        note = (user_request or "").strip()
+        if self.prompt_logger is not None:
+            self.prompt_logger.log_generate_request(
+                prompt_text=note,
+                has_image=upload is not None,
+            )
+
+        resolved_max_completion_tokens = self._resolve_positive_int(
+            field_name="max_completion_tokens",
+            override=max_completion_tokens,
+            default=self.config.max_completion_tokens,
+        )
+        resolved_timeout_seconds = self._resolve_positive_int(
+            field_name="timeout_seconds",
+            override=timeout_seconds,
+            default=self.config.timeout_seconds,
+        )
+        resolved_max_image_bytes = self._resolve_positive_int(
+            field_name="max_image_bytes",
+            override=max_image_bytes,
+            default=self.config.max_image_bytes,
+        )
+        resolved_json_output = bool(json_output)
+        resolved_enable_thinking = bool(enable_thinking)
+        resolved_temperature = self._resolve_temperature(temperature)
+
+        prepared_image = None
+        if upload is not None:
+            prepared_image = ImagePreparer.from_upload(
+                upload,
+                max_image_bytes=resolved_max_image_bytes,
+                log=log,
+            )
+
+        if prepared_image is None and not note:
+            raise AppError(400, "Either an image or prompt text is required.")
+
+        if prepared_image is not None:
+            log.add("Using image input")
+        if note:
+            log.add(f"Using prompt text ({len(note)} chars)")
+        log.add(
+            "Using request config: "
+            f"max_completion_tokens={resolved_max_completion_tokens}, "
+            f"timeout_seconds={resolved_timeout_seconds}, "
+            f"json_output={resolved_json_output}, "
+            f"enable_thinking={resolved_enable_thinking}, "
+            f"temperature={resolved_temperature}"
+        )
+
+        async for chunk in self.client.stream_chat_completion(
+            system_prompt=None,
+            user_text=note or None,
+            image_data_url=(
+                prepared_image.data_url if prepared_image is not None else None
+            ),
+            response_format={"type": "json_object"} if resolved_json_output else None,
+            max_completion_tokens=resolved_max_completion_tokens,
+            timeout_seconds=resolved_timeout_seconds,
+            enable_thinking=resolved_enable_thinking,
+            temperature=resolved_temperature,
+            log=log,
+        ):
+            yield chunk
+
+        log.add("Stream finished")
