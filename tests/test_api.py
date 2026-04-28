@@ -1,3 +1,4 @@
+import asyncio
 import tempfile
 import unittest
 from pathlib import Path
@@ -5,92 +6,48 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+import server.api as api_module
 from server.api import create_router
 from server.config import AppConfig, AppPaths
-from server.models import AppError, ModelRuntimeStatus
+from server.models import AppError, ProbedModelInfo
+from server.prompt_logger import PromptQueryLogger
+from server.service import GenerationService
 
 
 def build_config() -> AppConfig:
     return AppConfig(
         vllm_base_url="http://127.0.0.1:8000/v1",
-        model="/tmp/qwen",
-        vllm_host="127.0.0.1",
-        vllm_port=8000,
-        vllm_default_max_model_len=8192,
-        vllm_reasoning_parser="qwen3",
-        vllm_startup_timeout_seconds=10,
-        vllm_shutdown_grace_seconds=5,
         max_completion_tokens=1024,
         timeout_seconds=30,
         max_image_bytes=2048,
     )
 
 
-class FakeModelControl:
-    def __init__(self):
-        self.runtime = ModelRuntimeStatus(
-            status="stopped",
-            ownership="none",
-            model=None,
-            pid=None,
-            current_max_model_len=None,
-            default_max_model_len=8192,
-            theoretical_max_model_len=262144,
-            observed_kv_cache_tokens=210112,
-            recommended_max_model_len=131072,
-            recommended_max_model_len_reason="recommended",
-            detail="모델이 꺼져 있습니다.",
-            can_start=True,
-            can_stop=False,
+class FakeClient:
+    def __init__(self, info: ProbedModelInfo | None = None):
+        self.info = info or ProbedModelInfo(
+            model="qwen3.5-27b",
+            max_model_len=8192,
+            model_path="/tmp/qwen",
         )
-        self.started_with = None
-        self.stopped = False
 
-    async def get_runtime_status(self):
-        return self.runtime
+    async def probe_model_info(self, *, force: bool = False):
+        return self.info
 
-    async def start(self, *, max_model_len: int):
-        self.started_with = max_model_len
-        self.runtime = ModelRuntimeStatus(
-            status="starting",
-            ownership="managed",
-            model="/tmp/qwen",
-            pid=1001,
-            current_max_model_len=max_model_len,
-            default_max_model_len=8192,
-            theoretical_max_model_len=262144,
-            observed_kv_cache_tokens=210112,
-            recommended_max_model_len=131072,
-            recommended_max_model_len_reason="recommended",
-            detail="모델을 시작하는 중입니다.",
-            can_start=False,
-            can_stop=True,
-        )
-        return self.runtime
+    async def require_model_info(self) -> ProbedModelInfo:
+        if self.info is None:
+            raise AppError(503, "offline")
+        return self.info
 
-    async def stop(self):
-        self.stopped = True
-        self.runtime = ModelRuntimeStatus(
-            status="stopping",
-            ownership="managed",
-            model="/tmp/qwen",
-            pid=1001,
-            current_max_model_len=8192,
-            default_max_model_len=8192,
-            theoretical_max_model_len=262144,
-            observed_kv_cache_tokens=210112,
-            recommended_max_model_len=131072,
-            recommended_max_model_len_reason="recommended",
-            detail="모델을 종료하는 중입니다.",
-            can_start=False,
-            can_stop=False,
-        )
-        return self.runtime
+    async def create_chat_completion(self, **_kwargs):
+        return {
+            "choices": [{"message": {"content": "ok"}}],
+        }
 
 
 class FakeGenerationService:
     async def generate(self, *_args, **_kwargs):
-        raise AppError(503, "model not ready")
+        raise AppError(503, "not available")
 
 
 class FakeTokenBudgetService:
@@ -118,17 +75,13 @@ class ApiTests(unittest.TestCase):
         (static_dir / "index.html").write_text("<html></html>", encoding="utf-8")
 
         app = FastAPI()
-        self.model_control = FakeModelControl()
+        self.fake_client = FakeClient()
         app.include_router(
             create_router(
-                paths=AppPaths(
-                    base_dir=base_dir,
-                    static_dir=static_dir,
-                    runtime_dir=base_dir / "runtime",
-                ),
+                paths=AppPaths(base_dir=base_dir, static_dir=static_dir),
                 config=build_config(),
                 service=FakeGenerationService(),
-                model_control=self.model_control,
+                client=self.fake_client,
                 token_budget=FakeTokenBudgetService(),
             )
         )
@@ -137,29 +90,76 @@ class ApiTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.tempdir.cleanup()
 
-    def test_model_runtime_endpoint(self) -> None:
-        response = self.client.get("/api/model/runtime")
+    def test_model_info_endpoint_online(self) -> None:
+        response = self.client.get("/api/model/info")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["status"], "stopped")
-        self.assertEqual(response.json()["theoretical_max_model_len"], 262144)
-        self.assertEqual(response.json()["recommended_max_model_len"], 131072)
+        payload = response.json()
+        self.assertTrue(payload["online"])
+        self.assertEqual(payload["model"], "qwen3.5-27b")
+        self.assertEqual(payload["max_model_len"], 8192)
+        self.assertEqual(payload["base_url"], "http://127.0.0.1:8000/v1")
 
-    def test_model_start_endpoint(self) -> None:
-        response = self.client.post("/api/model/start", json={"max_model_len": 4096})
-        self.assertEqual(response.status_code, 202)
-        self.assertEqual(response.json()["status"], "starting")
-        self.assertEqual(self.model_control.started_with, 4096)
+    def test_model_info_endpoint_offline(self) -> None:
+        self.fake_client.info = None
+        response = self.client.get("/api/model/info")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertFalse(payload["online"])
+        self.assertIsNone(payload["model"])
+        self.assertIsNone(payload["max_model_len"])
 
-    def test_token_budget_endpoint(self) -> None:
+    def test_token_budget_uses_probed_max_model_len(self) -> None:
         response = self.client.post(
             "/api/token-budget",
             data={
                 "user_request": "hello",
                 "max_completion_tokens": "256",
-                "max_model_len": "8192",
                 "max_image_bytes": "2048",
             },
         )
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["output_tokens"], 256)
-        self.assertEqual(response.json()["max_model_len"], 8192)
+        payload = response.json()
+        self.assertEqual(payload["output_tokens"], 256)
+        self.assertEqual(payload["max_model_len"], 8192)
+
+    def test_generate_logs_prompt_to_server_file_only(self) -> None:
+        base_dir = Path(self.tempdir.name)
+        static_dir = base_dir / "static"
+        client_fake = FakeClient()
+        service = GenerationService(
+            config=build_config(),
+            client=client_fake,
+            prompt_logger=PromptQueryLogger(base_dir / "logs" / "request-prompts.log"),
+        )
+
+        app = FastAPI()
+        app.include_router(
+            create_router(
+                paths=AppPaths(base_dir=base_dir, static_dir=static_dir),
+                config=build_config(),
+                service=service,
+                client=client_fake,
+                token_budget=FakeTokenBudgetService(),
+            )
+        )
+        client = TestClient(app)
+
+        original_wait_for_disconnect = api_module.wait_for_disconnect
+
+        async def fake_wait_for_disconnect(_request) -> None:
+            await asyncio.sleep(60)
+
+        api_module.wait_for_disconnect = fake_wait_for_disconnect
+        try:
+            response = client.post("/api/generate", data={"user_request": "secret prompt"})
+        finally:
+            api_module.wait_for_disconnect = original_wait_for_disconnect
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["output_text"], "ok")
+        self.assertNotIn("secret prompt", "\n".join(payload["logs"]))
+
+        logged = (base_dir / "logs" / "request-prompts.log").read_text(encoding="utf-8")
+        self.assertIn("secret prompt", logged)
+        self.assertIn("endpoint=/api/generate", logged)

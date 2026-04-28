@@ -25,29 +25,14 @@ class PreparedImage:
 @dataclass(frozen=True)
 class GeneratedPayload:
     text: str
+    reasoning: str = ""
 
 
 @dataclass(frozen=True)
 class ProbedModelInfo:
-    model: Optional[str]
+    model: str
     max_model_len: Optional[int]
-
-
-@dataclass(frozen=True)
-class ModelRuntimeStatus:
-    status: str
-    ownership: str
-    model: Optional[str]
-    pid: Optional[int]
-    current_max_model_len: Optional[int]
-    default_max_model_len: int
-    theoretical_max_model_len: int
-    observed_kv_cache_tokens: Optional[int]
-    recommended_max_model_len: Optional[int]
-    recommended_max_model_len_reason: Optional[str]
-    detail: Optional[str]
-    can_start: bool
-    can_stop: bool
+    model_path: Optional[str]
 
 
 class AppError(Exception):

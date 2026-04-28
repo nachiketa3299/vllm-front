@@ -3,22 +3,19 @@ from fastapi.staticfiles import StaticFiles
 
 from .api import create_router
 from .config import CONFIG, PATHS
-from .model_control import ModelControlService
+from .prompt_logger import PromptQueryLogger
 from .service import GenerationService
 from .token_budget import TokenBudgetService
 from .vllm_client import VLLMClient
 
 
-MODEL_CONTROL_SERVICE = ModelControlService(
-    config=CONFIG,
-    paths=PATHS,
-)
 TOKEN_BUDGET_SERVICE = TokenBudgetService(CONFIG)
 VLLM_CLIENT = VLLMClient(CONFIG)
+PROMPT_QUERY_LOGGER = PromptQueryLogger(PATHS.base_dir / "logs" / "request-prompts.log")
 GENERATION_SERVICE = GenerationService(
     config=CONFIG,
     client=VLLM_CLIENT,
-    model_control=MODEL_CONTROL_SERVICE,
+    prompt_logger=PROMPT_QUERY_LOGGER,
 )
 
 
@@ -29,7 +26,7 @@ app.include_router(
         paths=PATHS,
         config=CONFIG,
         service=GENERATION_SERVICE,
-        model_control=MODEL_CONTROL_SERVICE,
+        client=VLLM_CLIENT,
         token_budget=TOKEN_BUDGET_SERVICE,
     )
 )

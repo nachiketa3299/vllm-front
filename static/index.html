@@ -3,89 +3,41 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>멀티모달 텍스트 생성기</title>
+    <title>vllm-front</title>
     <link rel="stylesheet" href="/static/styles.css" />
   </head>
   <body>
     <main class="page">
       <section class="hero">
-        <h1>멀티모달 텍스트 생성기</h1>
-        <p>
-          이미지 또는 프롬프트를 보내 vLLM의 raw 텍스트 응답을 확인합니다. 둘 다 함께 보내도 됩니다.
-        </p>
+        <h1 id="page-title">vllm-front</h1>
       </section>
 
-      <section class="panel model-panel">
-        <header class="section-header">
-          <h2>모델 제어</h2>
-          <p>
-            모델 로드시만 결정되는 <code>max_model_len</code>을 지정해 로컬 vLLM 모델을 켜고 끕니다.
-          </p>
-        </header>
-        <div class="model-grid">
-          <article class="model-card">
-            <header class="model-card-header">
-              <h3>실행 상태</h3>
-              <span id="model-status-badge" class="status-badge">확인 중</span>
-            </header>
-            <dl class="model-metadata">
-              <div>
-                <dt>모델</dt>
-                <dd id="model-runtime-model">불러오는 중...</dd>
-              </div>
-              <div>
-                <dt>컨텍스트 길이</dt>
-                <dd id="model-runtime-max-len">-</dd>
-              </div>
-              <div>
-                <dt>소유권</dt>
-                <dd id="model-runtime-ownership">-</dd>
-              </div>
-              <div>
-                <dt>PID</dt>
-                <dd id="model-runtime-pid">-</dd>
-              </div>
-              <div>
-                <dt>이론상 최대</dt>
-                <dd id="model-runtime-theoretical-max">-</dd>
-              </div>
-              <div>
-                <dt>gx10 추천</dt>
-                <dd id="model-runtime-recommended-max">-</dd>
-              </div>
-            </dl>
-            <p id="model-runtime-detail" class="model-detail">상태를 확인하는 중입니다.</p>
-            <p id="model-runtime-capability-note" class="model-detail subtle">상한 정보를 읽는 중입니다.</p>
-          </article>
+      <div class="model-strip">
+        <span class="model-strip-item">
+          <span class="label">모델</span>
+          <span class="value" id="model-runtime-model">...</span>
+        </span>
+        <span class="model-strip-divider" aria-hidden="true"></span>
+        <span class="model-strip-item">
+          <span class="label">컨텍스트</span>
+          <span class="value" id="model-runtime-max-len">-</span>
+        </span>
+        <span class="model-strip-divider" aria-hidden="true"></span>
+        <span class="model-strip-item">
+          <span class="label">vLLM 서버</span>
+          <span class="value" id="model-runtime-base-url">-</span>
+        </span>
+        <span id="model-status-badge" class="status-badge">확인 중</span>
+      </div>
 
-          <article class="model-card">
-            <header class="model-card-header">
-              <h3>시작 설정</h3>
-            </header>
-            <label class="prompt-label" for="max-model-len-input">max_model_len</label>
-            <input
-              id="max-model-len-input"
-              class="config-input"
-              type="number"
-              min="1"
-              step="1"
-              placeholder="예: 8192"
-            />
-            <div class="model-action-row">
-              <button id="model-start-button" class="primary" type="button">모델 켜기</button>
-              <button id="model-stop-button" class="secondary" type="button">모델 끄기</button>
-              <button id="model-refresh-button" class="ghost" type="button">새로고침</button>
-            </div>
-          </article>
-        </div>
-      </section>
-
-      <section class="panel config-panel">
+      <section class="panel input-panel">
         <header class="section-header">
-          <h2>요청 설정</h2>
-          <p><code>max_completion_tokens</code>, <code>timeout_seconds</code>, <code>max_image_bytes</code>는 요청 단위로 조정할 수 있습니다.</p>
+          <h2>입력</h2>
         </header>
-        <div class="config-table-wrap">
+        <aside class="help-box">
+          이미지 없이 텍스트만 보내도 되고, 둘 다 함께 보내도 됩니다. 생성 중에 페이지를 새로고침하거나 닫으면 요청이 중단됩니다.
+        </aside>
+        <div class="config-table-wrap config-table-compact">
           <table class="config-table">
             <thead>
               <tr>
@@ -100,34 +52,29 @@
             </tbody>
           </table>
         </div>
-      </section>
-
-      <section class="panel input-panel">
-        <header class="section-header">
-          <h2>입력</h2>
-        </header>
         <div class="input-grid">
           <input id="file-input" type="file" accept="image/*" />
           <section class="subpanel image-panel">
             <header class="subpanel-header">
               <h3>이미지</h3>
             </header>
-            <div id="dropzone" class="dropzone" role="button" tabindex="0" aria-label="이미지 업로드">
+            <div id="dropzone" class="dropzone">
               <div class="placeholder">
                 <strong>이미지를 여기로 드래그하세요</strong>
-                <span>또는 클릭해서 파일 탐색기를 여세요</span>
+                <span>또는 아래 업로드 버튼을 누르세요</span>
               </div>
-              <img id="preview-image" alt="선택한 의류 이미지 미리보기" />
+              <img id="preview-image" alt="선택한 이미지 미리보기" />
+              <div class="dropzone-actions">
+                <button id="reset-image-button" class="secondary dropzone-button dropzone-reset" type="button">해제</button>
+                <button id="browse-button" class="secondary dropzone-button" type="button">업로드</button>
+              </div>
             </div>
-            <button id="browse-button" class="secondary image-button" type="button">Upload Image</button>
           </section>
 
           <section class="subpanel prompt-panel">
             <header class="subpanel-header">
-              <h3>프롬프트</h3>
-              <p>이미지 없이 프롬프트만 보내도 되고, 둘 다 함께 보내도 됩니다.</p>
+              <h3>텍스트</h3>
             </header>
-            <label class="prompt-label" for="user-request-input">optional prompt</label>
             <textarea
               id="user-request-input"
               class="prompt-input"
@@ -137,46 +84,52 @@
           </section>
         </div>
         <div class="section-actions">
-          <button id="generate-button" class="primary" type="button" disabled>Generate</button>
+          <button id="generate-button" class="primary" type="button" disabled>생성</button>
         </div>
         <section class="budget-panel">
           <header class="budget-header">
             <h3>토큰 예산</h3>
-            <p id="token-budget-caption">입력 또는 설정을 바꾸면 토큰 사용량을 계산합니다.</p>
+            <span id="token-budget-caption" class="budget-caption">입력 또는 설정을 바꾸면 토큰 사용량을 계산합니다.</span>
           </header>
-          <div class="budget-bar" aria-hidden="true">
+          <div class="budget-bar" aria-hidden="true" title="주황: 입력 · 짙은색: 출력 예약 · 나머지: 남은 여유">
             <div id="token-budget-used" class="budget-used"></div>
             <div id="token-budget-output" class="budget-output"></div>
           </div>
-          <div class="budget-metrics">
-            <article>
-              <span>입력</span>
-              <strong id="token-budget-input">-</strong>
-            </article>
-            <article>
-              <span>출력 예약</span>
-              <strong id="token-budget-output-value">-</strong>
-            </article>
-            <article>
-              <span>총합</span>
-              <strong id="token-budget-total">-</strong>
-            </article>
-            <article>
-              <span>한도</span>
-              <strong id="token-budget-limit">-</strong>
-            </article>
-          </div>
+          <ul class="budget-legend">
+            <li><i class="swatch swatch-input"></i>입력 <strong id="token-budget-input">-</strong></li>
+            <li><i class="swatch swatch-output"></i>출력 예약 <strong id="token-budget-output-value">-</strong></li>
+            <li>총 <strong id="token-budget-total">-</strong> / 한도 <strong id="token-budget-limit">-</strong></li>
+          </ul>
         </section>
         <div id="status" class="status"></div>
+      </section>
+
+      <section class="panel preview reasoning" id="reasoning-panel" hidden>
+        <header class="section-header">
+          <h2>사고</h2>
+        </header>
+        <div class="preview-grid single-output">
+          <article class="preview-card">
+            <pre id="reasoning-preview"></pre>
+          </article>
+        </div>
       </section>
 
       <section class="panel preview">
         <header class="section-header">
           <h2>출력</h2>
+          <button
+            id="copy-output-button"
+            class="output-copy-button"
+            type="button"
+            title="클립보드에 복사"
+            disabled
+          >
+            복사
+          </button>
         </header>
         <div class="preview-grid single-output">
           <article class="preview-card">
-            <header>모델 출력 텍스트</header>
             <pre id="text-preview"></pre>
           </article>
         </div>

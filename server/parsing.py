@@ -51,6 +51,19 @@ class ResponseParser:
         return ResponseParser._strip_markdown_fence(content)
 
     @staticmethod
+    def extract_reasoning_content(response: dict[str, Any]) -> str:
+        try:
+            message = response["choices"][0]["message"]
+        except (KeyError, IndexError, TypeError):
+            return ""
+        if not isinstance(message, dict):
+            return ""
+        reasoning = message.get("reasoning_content")
+        if not isinstance(reasoning, str):
+            return ""
+        return reasoning.strip()
+
+    @staticmethod
     def _candidate_json_payloads(normalized: str) -> list[str]:
         candidates = [normalized]
         stripped = normalized.strip()

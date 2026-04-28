@@ -4,9 +4,9 @@ from fastapi import UploadFile
 
 from .config import AppConfig
 from .image import ImagePreparer
-from .model_control import ModelControlService
 from .models import AppError, GeneratedPayload, RequestLog
 from .parsing import ResponseParser
+from .prompt_logger import PromptQueryLogger
 from .vllm_client import VLLMClient
 
 
@@ -16,11 +16,11 @@ class GenerationService:
         *,
         config: AppConfig,
         client: VLLMClient,
-        model_control: ModelControlService,
+        prompt_logger: PromptQueryLogger | None = None,
     ):
         self.config = config
         self.client = client
-        self.model_control = model_control
+        self.prompt_logger = prompt_logger
 
     async def generate(
         self,
@@ -31,8 +31,14 @@ class GenerationService:
         timeout_seconds: Optional[int] = None,
         max_image_bytes: Optional[int] = None,
         json_output: Optional[bool] = None,
+        enable_thinking: Optional[bool] = None,
     ) -> GeneratedPayload:
-        await self.model_control.ensure_generation_available()
+        note = (user_request or "").strip()
+        if self.prompt_logger is not None:
+            self.prompt_logger.log_generate_request(
+                prompt_text=note,
+                has_image=upload is not None,
+            )
 
         resolved_max_completion_tokens = self._resolve_positive_int(
             field_name="max_completion_tokens",
@@ -50,8 +56,8 @@ class GenerationService:
             default=self.config.max_image_bytes,
         )
         resolved_json_output = bool(json_output)
+        resolved_enable_thinking = bool(enable_thinking)
 
-        note = (user_request or "").strip()
         prepared_image = None
         if upload is not None:
             prepared_image = ImagePreparer.from_upload(
@@ -76,19 +82,21 @@ class GenerationService:
             f"max_completion_tokens={resolved_max_completion_tokens}, "
             f"timeout_seconds={resolved_timeout_seconds}, "
             f"max_image_bytes={resolved_max_image_bytes}, "
-            f"json_output={resolved_json_output}"
+            f"json_output={resolved_json_output}, "
+            f"enable_thinking={resolved_enable_thinking}"
         )
 
-        output_text = await self._generate_text(
+        output_text, reasoning_text = await self._generate_text(
             image_data_url=prepared_image.data_url if prepared_image is not None else None,
             user_request=note,
             max_completion_tokens=resolved_max_completion_tokens,
             timeout_seconds=resolved_timeout_seconds,
             json_output=resolved_json_output,
+            enable_thinking=resolved_enable_thinking,
             log=log,
         )
 
-        return GeneratedPayload(text=output_text)
+        return GeneratedPayload(text=output_text, reasoning=reasoning_text)
 
     async def _generate_text(
         self,
@@ -98,27 +106,27 @@ class GenerationService:
         max_completion_tokens: int,
         timeout_seconds: int,
         json_output: bool,
+        enable_thinking: bool,
         log: RequestLog,
-    ) -> str:
-        try:
-            response = await self.client.create_chat_completion(
-                system_prompt=None,
-                user_text=user_request or None,
-                image_data_url=image_data_url,
-                response_format={"type": "json_object"} if json_output else None,
-                max_completion_tokens=max_completion_tokens,
-                timeout_seconds=timeout_seconds,
-                log=log,
-                label="generation",
-            )
-        except AppError as exc:
-            raise await self.model_control.normalize_generation_error(exc) from exc
+    ) -> tuple[str, str]:
+        response = await self.client.create_chat_completion(
+            system_prompt=None,
+            user_text=user_request or None,
+            image_data_url=image_data_url,
+            response_format={"type": "json_object"} if json_output else None,
+            max_completion_tokens=max_completion_tokens,
+            timeout_seconds=timeout_seconds,
+            enable_thinking=enable_thinking,
+            log=log,
+            label="generation",
+        )
         log.add(f"generation raw preview: {ResponseParser.preview_content(response)}")
         output_text = ResponseParser.extract_normalized_content(response)
         if not output_text:
             raise AppError(502, "vLLM returned an empty response.")
+        reasoning_text = ResponseParser.extract_reasoning_content(response)
         log.add("Captured raw text output")
-        return output_text
+        return output_text, reasoning_text
 
     @staticmethod
     def _resolve_positive_int(*, field_name: str, override: Optional[int], default: int) -> int:

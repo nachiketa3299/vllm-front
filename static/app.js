@@ -1,26 +1,21 @@
 const fileInput = document.getElementById("file-input");
 const browseButton = document.getElementById("browse-button");
+const resetImageButton = document.getElementById("reset-image-button");
 const generateButton = document.getElementById("generate-button");
 const dropzone = document.getElementById("dropzone");
 const previewImage = document.getElementById("preview-image");
 const userRequestInput = document.getElementById("user-request-input");
 const configTableBody = document.getElementById("config-table-body");
 const textPreview = document.getElementById("text-preview");
+const reasoningPanel = document.getElementById("reasoning-panel");
+const reasoningPreview = document.getElementById("reasoning-preview");
+const copyOutputButton = document.getElementById("copy-output-button");
 const status = document.getElementById("status");
 const logOutput = document.getElementById("log-output");
 const modelStatusBadge = document.getElementById("model-status-badge");
 const modelRuntimeModel = document.getElementById("model-runtime-model");
 const modelRuntimeMaxLen = document.getElementById("model-runtime-max-len");
-const modelRuntimeOwnership = document.getElementById("model-runtime-ownership");
-const modelRuntimePid = document.getElementById("model-runtime-pid");
-const modelRuntimeTheoreticalMax = document.getElementById("model-runtime-theoretical-max");
-const modelRuntimeRecommendedMax = document.getElementById("model-runtime-recommended-max");
-const modelRuntimeDetail = document.getElementById("model-runtime-detail");
-const modelRuntimeCapabilityNote = document.getElementById("model-runtime-capability-note");
-const maxModelLenInput = document.getElementById("max-model-len-input");
-const modelStartButton = document.getElementById("model-start-button");
-const modelStopButton = document.getElementById("model-stop-button");
-const modelRefreshButton = document.getElementById("model-refresh-button");
+const modelRuntimeBaseUrl = document.getElementById("model-runtime-base-url");
 const tokenBudgetPanel = document.querySelector(".budget-panel");
 const tokenBudgetCaption = document.getElementById("token-budget-caption");
 const tokenBudgetUsed = document.getElementById("token-budget-used");
@@ -30,24 +25,50 @@ const tokenBudgetOutputValue = document.getElementById("token-budget-output-valu
 const tokenBudgetTotal = document.getElementById("token-budget-total");
 const tokenBudgetLimit = document.getElementById("token-budget-limit");
 
-const READY_STATUSES = new Set(["running_managed", "running_unmanaged"]);
-const PENDING_STATUSES = new Set(["starting", "stopping"]);
-
 let selectedFile = null;
 let generationStartedAt = null;
 let generationTimerId = null;
-let runtimePollId = null;
 let budgetEstimateTimerId = null;
 let budgetRequestSeq = 0;
 let generationInFlight = false;
-let modelRuntime = null;
+let modelInfo = null;
 const configInputs = new Map();
 
 function timestamp() {
   return new Date().toLocaleTimeString("ko-KR", { hour12: false });
 }
 
-function appendLog(message) {
+const LOG_IMPORTANT_PATTERNS = [
+  /\[ERROR\]/,
+  /\[WARN\]/,
+  /실패/,
+  /에러/,
+  /오류/,
+  /거부/,
+  /초과/,
+  /중단/,
+  /취소/,
+  /error/i,
+  /fail/i,
+  /disconnect/i,
+  /cancel/i,
+  /timeout/i,
+  /unhandled/i,
+  /warning/i,
+  /invalid/i,
+  /empty response/i,
+  /cannot identify/i,
+  /HTTP [45]\d\d/,
+];
+
+function isImportantLog(message) {
+  const text = String(message || "");
+  return LOG_IMPORTANT_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+function appendLog(message, options = {}) {
+  const { force = false } = options;
+  if (!force && !isImportantLog(message)) return;
   const line = `[${timestamp()}] ${message}`;
   if (logOutput.textContent.trim() === "대기 중입니다.") {
     logOutput.textContent = line;
@@ -68,13 +89,18 @@ function clearLog() {
   logOutput.textContent = "대기 중입니다.";
 }
 
+const GENERATE_BUTTON_IDLE_LABEL = "생성";
+
+function updateGenerateButtonTimerLabel() {
+  const elapsedSeconds = Math.floor((Date.now() - generationStartedAt) / 1000);
+  generateButton.textContent = `생성 중 (${elapsedSeconds}초 경과)`;
+}
+
 function startGenerationTimer() {
   stopGenerationTimer();
   generationStartedAt = Date.now();
-  generationTimerId = window.setInterval(() => {
-    const elapsedSeconds = Math.floor((Date.now() - generationStartedAt) / 1000);
-    setStatus(`vLLM으로 텍스트 생성 중... ${elapsedSeconds}초 경과`);
-  }, 1000);
+  updateGenerateButtonTimerLabel();
+  generationTimerId = window.setInterval(updateGenerateButtonTimerLabel, 1000);
 }
 
 function stopGenerationTimer() {
@@ -82,6 +108,7 @@ function stopGenerationTimer() {
     window.clearInterval(generationTimerId);
     generationTimerId = null;
   }
+  generateButton.textContent = GENERATE_BUTTON_IDLE_LABEL;
 }
 
 function setStatus(message, isError = false) {
@@ -91,10 +118,25 @@ function setStatus(message, isError = false) {
 
 function setPreview(target, data) {
   target.textContent = data;
+  if (target === textPreview) {
+    updateCopyButtonState();
+  }
+}
+
+function updateCopyButtonState() {
+  const hasContent = textPreview.textContent.length > 0;
+  copyOutputButton.disabled = !hasContent;
+}
+
+function setReasoning(text) {
+  const value = typeof text === "string" ? text : "";
+  reasoningPreview.textContent = value;
+  reasoningPanel.hidden = value.length === 0;
 }
 
 function resetGeneratedState() {
   setPreview(textPreview, "");
+  setReasoning("");
 }
 
 function hasPromptText() {
@@ -106,25 +148,11 @@ function hasGenerationInput() {
 }
 
 function isModelReady() {
-  return modelRuntime !== null && READY_STATUSES.has(modelRuntime.status);
+  return modelInfo !== null && modelInfo.online === true;
 }
 
 function updateGenerateButtonState() {
   generateButton.disabled = generationInFlight || !hasGenerationInput() || !isModelReady();
-}
-
-function resolveBudgetMaxModelLen() {
-  const planned = Number.parseInt(maxModelLenInput.value.trim(), 10);
-  if (Number.isInteger(planned) && planned > 0) {
-    return planned;
-  }
-  if (modelRuntime && Number.isInteger(modelRuntime.current_max_model_len)) {
-    return modelRuntime.current_max_model_len;
-  }
-  if (modelRuntime && Number.isInteger(modelRuntime.default_max_model_len)) {
-    return modelRuntime.default_max_model_len;
-  }
-  return null;
 }
 
 function refreshIdleStatus() {
@@ -132,15 +160,7 @@ function refreshIdleStatus() {
     return;
   }
   if (!isModelReady()) {
-    setStatus("모델이 준비되지 않았습니다. 먼저 모델을 켜세요.");
-    return;
-  }
-  if (selectedFile) {
-    setStatus(`선택됨: ${selectedFile.name}`);
-    return;
-  }
-  if (hasPromptText()) {
-    setStatus("프롬프트만으로 생성할 수 있습니다.");
+    setStatus("vLLM 서버에 연결되지 않았습니다.");
     return;
   }
   setStatus("");
@@ -188,41 +208,6 @@ async function fetchJson(url, options = {}) {
   return payload;
 }
 
-function runtimeStatusLabel(statusValue) {
-  const labels = {
-    stopped: "꺼짐",
-    starting: "부팅 중",
-    running_managed: "실행 중",
-    running_unmanaged: "외부 실행 중",
-    stopping: "종료 중",
-    error: "오류",
-  };
-  return labels[statusValue] || statusValue || "알 수 없음";
-}
-
-function ownershipLabel(ownershipValue) {
-  const labels = {
-    managed: "앱 관리",
-    unmanaged: "외부 실행",
-    none: "없음",
-  };
-  return labels[ownershipValue] || ownershipValue || "-";
-}
-
-function updateRuntimePolling() {
-  const shouldPoll = modelRuntime !== null && PENDING_STATUSES.has(modelRuntime.status);
-  if (shouldPoll && runtimePollId === null) {
-    runtimePollId = window.setInterval(() => {
-      loadModelRuntime({ quiet: true });
-    }, 2000);
-    return;
-  }
-  if (!shouldPoll && runtimePollId !== null) {
-    window.clearInterval(runtimePollId);
-    runtimePollId = null;
-  }
-}
-
 function renderBudgetUnavailable(message) {
   tokenBudgetPanel.classList.remove("over-limit");
   tokenBudgetUsed.style.width = "0%";
@@ -244,9 +229,10 @@ function renderTokenBudget(payload) {
   const totalWidth = limit > 0 ? Math.min((totalTokens / limit) * 100, 100) : 0;
 
   tokenBudgetPanel.classList.toggle("over-limit", Boolean(payload.exceeds_limit));
-  tokenBudgetUsed.style.width = `${inputWidth}%`;
+  const outputSpan = Math.max(totalWidth - inputWidth, 0);
+  tokenBudgetUsed.style.width = inputTokens > 0 ? `max(2px, ${inputWidth}%)` : "0";
   tokenBudgetOutput.style.left = `${inputWidth}%`;
-  tokenBudgetOutput.style.width = `${Math.max(totalWidth - inputWidth, 0)}%`;
+  tokenBudgetOutput.style.width = outputTokens > 0 ? `max(2px, ${outputSpan}%)` : "0";
   tokenBudgetInput.textContent = `${inputTokens}`;
   tokenBudgetOutputValue.textContent = `${outputTokens}`;
   tokenBudgetTotal.textContent = `${totalTokens}`;
@@ -275,10 +261,8 @@ async function estimateTokenBudget() {
     renderBudgetUnavailable("입력이 없어서 예산 계산을 대기 중입니다.");
     return;
   }
-
-  const maxModelLen = resolveBudgetMaxModelLen();
-  if (!Number.isInteger(maxModelLen) || maxModelLen <= 0) {
-    renderBudgetUnavailable("유효한 max_model_len 값을 지정하면 토큰 예산을 계산합니다.");
+  if (!isModelReady()) {
+    renderBudgetUnavailable("vLLM 서버에 연결되지 않아 토큰 예산을 계산할 수 없습니다.");
     return;
   }
 
@@ -295,7 +279,6 @@ async function estimateTokenBudget() {
     "max_image_bytes",
     configInputs.get("max_image_bytes")?.value?.trim() || "0"
   );
-  formData.append("max_model_len", `${maxModelLen}`);
 
   try {
     const payload = await fetchJson("/api/token-budget", {
@@ -325,116 +308,57 @@ function scheduleBudgetEstimate() {
   }, 250);
 }
 
-function renderModelRuntime(runtime) {
-  modelRuntime = runtime;
+function renderModelInfo(info) {
+  modelInfo = info;
 
-  modelStatusBadge.textContent = runtimeStatusLabel(runtime.status);
   modelStatusBadge.classList.remove("running", "pending", "error");
-  if (READY_STATUSES.has(runtime.status)) {
+  if (info.online) {
+    modelStatusBadge.textContent = "연결됨";
     modelStatusBadge.classList.add("running");
-  } else if (PENDING_STATUSES.has(runtime.status)) {
-    modelStatusBadge.classList.add("pending");
-  } else if (runtime.status === "error") {
-    modelStatusBadge.classList.add("error");
-  }
-
-  modelRuntimeModel.textContent = runtime.model || "없음";
-  modelRuntimeMaxLen.textContent =
-    runtime.current_max_model_len !== null && runtime.current_max_model_len !== undefined
-      ? `${runtime.current_max_model_len}`
-      : `${runtime.default_max_model_len} (기본)`;
-  modelRuntimeOwnership.textContent = ownershipLabel(runtime.ownership);
-  modelRuntimePid.textContent = runtime.pid !== null && runtime.pid !== undefined ? `${runtime.pid}` : "-";
-  modelRuntimeTheoreticalMax.textContent =
-    runtime.theoretical_max_model_len !== null && runtime.theoretical_max_model_len !== undefined
-      ? runtime.theoretical_max_model_len.toLocaleString()
-      : "-";
-  modelRuntimeRecommendedMax.textContent =
-    runtime.recommended_max_model_len !== null && runtime.recommended_max_model_len !== undefined
-      ? runtime.recommended_max_model_len.toLocaleString()
-      : "-";
-  modelRuntimeDetail.textContent = runtime.detail || "추가 정보 없음";
-  if (runtime.recommended_max_model_len_reason) {
-    modelRuntimeCapabilityNote.textContent = runtime.recommended_max_model_len_reason;
+    modelRuntimeModel.textContent = info.model || "-";
+    modelRuntimeMaxLen.textContent =
+      info.max_model_len !== null && info.max_model_len !== undefined
+        ? info.max_model_len.toLocaleString()
+        : "-";
   } else {
-    modelRuntimeCapabilityNote.textContent = "추천값 근거를 아직 확보하지 못했습니다.";
-  }
-
-  modelStartButton.disabled = !runtime.can_start;
-  modelStopButton.disabled = !runtime.can_stop;
-  modelRefreshButton.disabled = false;
-
-  if (!maxModelLenInput.value.trim()) {
-    maxModelLenInput.value = `${runtime.default_max_model_len}`;
+    modelStatusBadge.textContent = "오프라인";
+    modelStatusBadge.classList.add("error");
+    modelRuntimeModel.textContent = "-";
+    modelRuntimeMaxLen.textContent = "-";
   }
 
   updateGenerateButtonState();
-  updateRuntimePolling();
   refreshIdleStatus();
   scheduleBudgetEstimate();
 }
 
-async function loadModelRuntime({ quiet = false } = {}) {
+async function loadRuntimeInfo() {
+  // 시작 시 설정된 vLLM 서버 주소를 정적으로 표시 (probe 아님).
   try {
-    const payload = await fetchJson("/api/model/runtime");
-    renderModelRuntime(payload);
+    const payload = await fetchJson("/api/runtime");
+    modelRuntimeBaseUrl.textContent = payload.vllm_base_url || "-";
+  } catch (error) {
+    modelRuntimeBaseUrl.textContent = "-";
+  }
+}
+
+async function loadModelInfo({ quiet = false } = {}) {
+  try {
+    const payload = await fetchJson("/api/model/info");
+    renderModelInfo(payload);
     return payload;
   } catch (error) {
-    const message = error instanceof Error ? error.message : "모델 상태를 불러오지 못했습니다.";
+    const message = error instanceof Error ? error.message : "모델 정보를 불러오지 못했습니다.";
+    modelInfo = null;
     modelStatusBadge.textContent = "오류";
     modelStatusBadge.classList.remove("running", "pending");
     modelStatusBadge.classList.add("error");
-    modelRuntimeDetail.textContent = message;
-    modelRuntimeCapabilityNote.textContent = "상한 정보를 읽지 못했습니다.";
-    renderBudgetUnavailable("모델 상태를 읽지 못해 토큰 예산을 계산할 수 없습니다.");
+    renderBudgetUnavailable("모델 정보를 읽지 못해 토큰 예산을 계산할 수 없습니다.");
+    updateGenerateButtonState();
     if (!quiet) {
       appendLog(message);
     }
     return null;
-  }
-}
-
-async function startModel() {
-  const raw = maxModelLenInput.value.trim();
-  const maxModelLen = Number.parseInt(raw, 10);
-  if (!Number.isInteger(maxModelLen) || maxModelLen <= 0) {
-    modelRuntimeDetail.textContent = "유효한 max_model_len 값을 입력하세요.";
-    modelStatusBadge.textContent = "오류";
-    modelStatusBadge.classList.remove("running", "pending");
-    modelStatusBadge.classList.add("error");
-    scheduleBudgetEstimate();
-    return;
-  }
-
-  try {
-    appendLog(`모델 시작 요청: max_model_len=${maxModelLen}`);
-    const payload = await fetchJson("/api/model/start", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ max_model_len: maxModelLen }),
-    });
-    renderModelRuntime(payload);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "모델 시작에 실패했습니다.";
-    appendLog(message);
-    modelRuntimeDetail.textContent = message;
-    modelStatusBadge.textContent = "오류";
-    modelStatusBadge.classList.remove("running", "pending");
-    modelStatusBadge.classList.add("error");
-  }
-}
-
-async function stopModel() {
-  try {
-    appendLog("모델 종료 요청");
-    const payload = await fetchJson("/api/model/stop", {
-      method: "POST",
-    });
-    renderModelRuntime(payload);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "모델 종료에 실패했습니다.";
-    appendLog(message);
-    modelRuntimeDetail.textContent = message;
   }
 }
 
@@ -444,7 +368,7 @@ async function generate() {
     return;
   }
   if (!isModelReady()) {
-    setStatus("모델이 준비되지 않았습니다. 먼저 모델을 켜세요.", true);
+    setStatus("vLLM 서버에 연결되지 않았습니다.", true);
     return;
   }
 
@@ -462,12 +386,14 @@ async function generate() {
   }
   const jsonOutputInput = configInputs.get("json_output");
   formData.append("json_output", jsonOutputInput && jsonOutputInput.checked ? "true" : "false");
+  const thinkingInput = configInputs.get("enable_thinking");
+  formData.append("enable_thinking", thinkingInput && thinkingInput.checked ? "true" : "false");
 
   generationInFlight = true;
   updateGenerateButtonState();
   resetGeneratedState();
   clearLog();
-  setStatus("vLLM으로 텍스트 생성 중...");
+  setStatus("");
   appendLog("생성 요청 시작");
   appendLog(selectedFile ? `이미지 전송: ${selectedFile.name}` : "이미지 없이 전송");
   appendLog(`프롬프트 전송: ${userRequest.length}자`);
@@ -495,8 +421,12 @@ async function generate() {
     }
 
     setPreview(textPreview, typeof payload.output_text === "string" ? payload.output_text : "");
+    setReasoning(typeof payload.reasoning_text === "string" ? payload.reasoning_text : "");
     setStatus("생성이 완료되었습니다. 출력 텍스트를 확인하세요.");
-    appendLog("생성 완료");
+    const elapsedSec = generationStartedAt !== null
+      ? (Date.now() - generationStartedAt) / 1000
+      : 0;
+    appendLog(`✓ 생성 완료 (${elapsedSec.toFixed(1)}s)`, { force: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : "생성에 실패했습니다.";
     setStatus(message, true);
@@ -504,7 +434,7 @@ async function generate() {
   } finally {
     stopGenerationTimer();
     generationInFlight = false;
-    await loadModelRuntime({ quiet: true });
+    await loadModelInfo({ quiet: true });
     updateGenerateButtonState();
     scheduleBudgetEstimate();
   }
@@ -525,6 +455,14 @@ function renderConfigEntries(entries) {
     const valueCell = document.createElement("td");
 
     keyCell.textContent = typeof entry.label === "string" ? entry.label : entry.key;
+    if (typeof entry.key === "string" && entry.key) {
+      const tipLines = [entry.key];
+      if (typeof entry.description === "string" && entry.description) {
+        tipLines.push(entry.description);
+      }
+      keyCell.dataset.tip = tipLines.join("\n");
+      keyCell.classList.add("config-key-cell");
+    }
 
     if (entry.editable) {
       if (entry.control === "checkbox") {
@@ -584,26 +522,22 @@ async function loadConfig() {
 }
 
 browseButton.addEventListener("click", () => fileInput.click());
-dropzone.addEventListener("click", () => fileInput.click());
-dropzone.addEventListener("keydown", (event) => {
-  if (event.key === "Enter" || event.key === " ") {
-    event.preventDefault();
-    fileInput.click();
-  }
-});
 
 fileInput.addEventListener("change", (event) => {
   const [file] = event.target.files;
   setSelectedFile(file || null);
 });
 
+function updatePromptContentClass() {
+  userRequestInput.classList.toggle("has-content", hasPromptText());
+}
+
 userRequestInput.addEventListener("input", () => {
+  updatePromptContentClass();
   updateGenerateButtonState();
   refreshIdleStatus();
   scheduleBudgetEstimate();
 });
-
-maxModelLenInput.addEventListener("input", scheduleBudgetEstimate);
 
 ["dragenter", "dragover"].forEach((eventName) => {
   dropzone.addEventListener(eventName, (event) => {
@@ -631,11 +565,66 @@ dropzone.addEventListener("drop", (event) => {
 });
 
 generateButton.addEventListener("click", generate);
-modelStartButton.addEventListener("click", startModel);
-modelStopButton.addEventListener("click", stopModel);
-modelRefreshButton.addEventListener("click", () => loadModelRuntime());
+resetImageButton.addEventListener("click", () => {
+  fileInput.value = "";
+  setSelectedFile(null);
+});
+
+async function copyToClipboard(text) {
+  if (navigator.clipboard && window.isSecureContext) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.top = "0";
+  textarea.style.left = "-9999px";
+  document.body.appendChild(textarea);
+  const selection = document.getSelection();
+  const previousRange = selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
+  textarea.select();
+  try {
+    const ok = document.execCommand("copy");
+    if (!ok) throw new Error("execCommand copy returned false");
+  } finally {
+    document.body.removeChild(textarea);
+    if (previousRange && selection) {
+      selection.removeAllRanges();
+      selection.addRange(previousRange);
+    }
+  }
+}
+
+let copyResetTimerId = null;
+copyOutputButton.addEventListener("click", async () => {
+  const text = textPreview.textContent;
+  if (!text) return;
+  try {
+    await copyToClipboard(text);
+    copyOutputButton.textContent = "복사됨";
+    copyOutputButton.classList.add("copied");
+    if (copyResetTimerId !== null) window.clearTimeout(copyResetTimerId);
+    copyResetTimerId = window.setTimeout(() => {
+      copyOutputButton.textContent = "복사";
+      copyOutputButton.classList.remove("copied");
+      copyResetTimerId = null;
+    }, 1200);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "클립보드 복사 실패";
+    appendLog(`복사 실패: ${message}`);
+  }
+});
 
 loadConfig();
-loadModelRuntime();
+loadRuntimeInfo();
+loadModelInfo();
 updateGenerateButtonState();
+
+const MODEL_INFO_POLL_MS = 20000;
+window.setInterval(() => {
+  if (generationInFlight) return;
+  loadModelInfo({ quiet: true });
+}, MODEL_INFO_POLL_MS);
 renderBudgetUnavailable("입력 또는 설정을 바꾸면 토큰 사용량을 계산합니다.");

@@ -1,21 +1,11 @@
 import unittest
+from pathlib import Path
+import tempfile
 
 from server.config import AppConfig
-from server.models import AppError, RequestLog
+from server.models import AppError, ProbedModelInfo, RequestLog
+from server.prompt_logger import PromptQueryLogger
 from server.service import GenerationService
-
-
-class FakeModelControl:
-    def __init__(self, *, ready: bool = True, normalized_error: AppError | None = None):
-        self.ready = ready
-        self.normalized_error = normalized_error
-
-    async def ensure_generation_available(self) -> None:
-        if not self.ready:
-            raise AppError(503, "model not ready")
-
-    async def normalize_generation_error(self, error: AppError) -> AppError:
-        return self.normalized_error or error
 
 
 class FakeClient:
@@ -24,6 +14,17 @@ class FakeClient:
             "choices": [{"message": {"content": "ok"}}],
         }
         self.error = error
+        self._info = ProbedModelInfo(
+            model="qwen3.5-27b",
+            max_model_len=8192,
+            model_path="/tmp/qwen",
+        )
+
+    async def probe_model_info(self, *, force: bool = False):
+        return self._info
+
+    async def require_model_info(self) -> ProbedModelInfo:
+        return self._info
 
     async def create_chat_completion(self, **_kwargs):
         if self.error is not None:
@@ -34,13 +35,6 @@ class FakeClient:
 def build_config() -> AppConfig:
     return AppConfig(
         vllm_base_url="http://127.0.0.1:8000/v1",
-        model="/tmp/qwen",
-        vllm_host="127.0.0.1",
-        vllm_port=8000,
-        vllm_default_max_model_len=8192,
-        vllm_reasoning_parser="qwen3",
-        vllm_startup_timeout_seconds=10,
-        vllm_shutdown_grace_seconds=5,
         max_completion_tokens=1024,
         timeout_seconds=30,
         max_image_bytes=1024,
@@ -48,30 +42,43 @@ def build_config() -> AppConfig:
 
 
 class GenerationServiceTests(unittest.IsolatedAsyncioTestCase):
-    async def test_generate_rejects_when_model_is_not_ready(self) -> None:
-        service = GenerationService(
-            config=build_config(),
-            client=FakeClient(),
-            model_control=FakeModelControl(ready=False),
-        )
+    async def test_prompt_logger_creates_log_file_on_init(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            log_path = Path(tempdir) / "logs" / "request-prompts.log"
 
-        with self.assertRaises(AppError) as exc:
-            await service.generate(None, RequestLog(entries=[]), user_request="hello")
+            PromptQueryLogger(log_path)
 
-        self.assertEqual(exc.exception.status_code, 503)
+            self.assertTrue(log_path.parent.is_dir())
+            self.assertTrue(log_path.is_file())
 
-    async def test_generate_normalizes_backend_disconnect(self) -> None:
+    async def test_generate_propagates_client_errors(self) -> None:
         service = GenerationService(
             config=build_config(),
             client=FakeClient(error=AppError(502, "connect failed")),
-            model_control=FakeModelControl(
-                ready=True,
-                normalized_error=AppError(503, "stopped during request"),
-            ),
         )
 
         with self.assertRaises(AppError) as exc:
             await service.generate(None, RequestLog(entries=[]), user_request="hello")
 
-        self.assertEqual(exc.exception.status_code, 503)
-        self.assertEqual(exc.exception.detail, "stopped during request")
+        self.assertEqual(exc.exception.status_code, 502)
+
+    async def test_generate_writes_prompt_log_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            log_path = Path(tempdir) / "logs" / "request-prompts.log"
+            service = GenerationService(
+                config=build_config(),
+                client=FakeClient(response={"choices": [{"message": {"content": "ok"}}]}),
+                prompt_logger=PromptQueryLogger(log_path),
+            )
+
+            result = await service.generate(
+                None,
+                RequestLog(entries=[]),
+                user_request="hello\nworld",
+            )
+
+            self.assertEqual(result.text, "ok")
+            logged = log_path.read_text(encoding="utf-8")
+            self.assertIn("endpoint=/api/generate", logged)
+            self.assertIn("prompt_chars=11", logged)
+            self.assertIn("hello\nworld", logged)

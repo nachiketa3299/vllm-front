@@ -13,7 +13,7 @@ from .models import AppError, PreparedImage, RequestLog
 class TokenBudgetService:
     def __init__(self, config: AppConfig):
         self.config = config
-        self._processor = None
+        self._processor_cache: dict[str, Any] = {}
 
     def estimate(
         self,
@@ -23,6 +23,7 @@ class TokenBudgetService:
         max_completion_tokens: int,
         max_model_len: int,
         max_image_bytes: int,
+        model_path: str,
     ) -> dict[str, Any]:
         resolved_output_tokens = self._resolve_positive_int(
             field_name="max_completion_tokens",
@@ -36,6 +37,8 @@ class TokenBudgetService:
             field_name="max_image_bytes",
             value=max_image_bytes,
         )
+        if not model_path:
+            raise AppError(503, "model path not available for token budget estimation")
 
         note = (user_request or "").strip()
         prepared_image = None
@@ -49,6 +52,7 @@ class TokenBudgetService:
         input_tokens, text_tokens = self._estimate_input_tokens(
             user_request=note,
             prepared_image=prepared_image,
+            model_path=model_path,
         )
         image_tokens = max(0, input_tokens - text_tokens)
         total_tokens = input_tokens + resolved_output_tokens
@@ -72,8 +76,9 @@ class TokenBudgetService:
         *,
         user_request: str,
         prepared_image: PreparedImage | None,
+        model_path: str,
     ) -> tuple[int, int]:
-        processor = self._get_processor()
+        processor = self._get_processor(model_path)
         text_messages = self._build_messages(user_request=user_request, include_image=False)
         text_template = processor.apply_chat_template(
             text_messages,
@@ -116,13 +121,16 @@ class TokenBudgetService:
         except Exception as exc:
             raise AppError(400, "이미지 토큰 추정을 위해 업로드 이미지를 열 수 없습니다.") from exc
 
-    def _get_processor(self):
-        if self._processor is None:
-            self._processor = AutoProcessor.from_pretrained(
-                self.config.model,
-                trust_remote_code=True,
-            )
-        return self._processor
+    def _get_processor(self, model_path: str):
+        cached = self._processor_cache.get(model_path)
+        if cached is not None:
+            return cached
+        processor = AutoProcessor.from_pretrained(
+            model_path,
+            trust_remote_code=True,
+        )
+        self._processor_cache[model_path] = processor
+        return processor
 
     @staticmethod
     def _resolve_positive_int(*, field_name: str, value: int) -> int:
