@@ -225,6 +225,12 @@ class GenerationService:
             temperature=resolved_temperature,
             log=log,
         ):
+            # vLLM 의 qwen3 reasoning_parser 가 streaming 모드에서
+            # enable_thinking=false 케이스를 제대로 처리하지 못하고 모든 토큰을
+            # delta.reasoning 으로 보내는 동작이 있음. 사용자가 사고를 끄면
+            # 사고 패널 대신 본문으로 매핑.
+            if not resolved_enable_thinking and "reasoning" in chunk and "content" not in chunk:
+                chunk = {"content": chunk["reasoning"]}
             yield chunk
 
         log.add("Stream finished")
