@@ -343,6 +343,12 @@ h1 {
   font-size: 1rem;
 }
 
+.subpanel-meta {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
 .subpanel-header p {
   margin: 0;
   max-width: 420px;

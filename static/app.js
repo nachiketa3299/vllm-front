@@ -18,7 +18,8 @@ const modelRuntimeModel = document.getElementById("model-runtime-model");
 const modelRuntimeMaxLen = document.getElementById("model-runtime-max-len");
 const modelRuntimeBaseUrl = document.getElementById("model-runtime-base-url");
 const tokenBudgetPanel = document.querySelector(".budget-panel");
-const tokenBudgetCaption = document.getElementById("token-budget-caption");
+const imageMetaEl = document.getElementById("image-meta");
+const textMetaEl = document.getElementById("text-meta");
 const tokenBudgetUsed = document.getElementById("token-budget-used");
 const tokenBudgetOutput = document.getElementById("token-budget-output");
 const tokenBudgetInput = document.getElementById("token-budget-input");
@@ -209,7 +210,33 @@ async function fetchJson(url, options = {}) {
   return payload;
 }
 
-function renderBudgetUnavailable(message) {
+function clearInputMeta() {
+  if (imageMetaEl) imageMetaEl.textContent = "";
+  if (textMetaEl) textMetaEl.textContent = "";
+}
+
+function renderInputMeta(payload) {
+  if (imageMetaEl) {
+    if (selectedFile) {
+      const kb = Math.max(1, Math.round(selectedFile.size / 1024));
+      const tokens = Number(payload?.image_tokens) || 0;
+      imageMetaEl.textContent = `${kb} KB · ${tokens} tokens`;
+    } else {
+      imageMetaEl.textContent = "";
+    }
+  }
+  if (textMetaEl) {
+    const chars = userRequestInput.value.length;
+    if (chars > 0) {
+      const tokens = Number(payload?.text_tokens) || 0;
+      textMetaEl.textContent = `${chars}자 · ${tokens} tokens`;
+    } else {
+      textMetaEl.textContent = "";
+    }
+  }
+}
+
+function renderBudgetUnavailable() {
   tokenBudgetPanel.classList.remove("over-limit");
   tokenBudgetUsed.style.width = "0%";
   tokenBudgetOutput.style.left = "0%";
@@ -218,7 +245,7 @@ function renderBudgetUnavailable(message) {
   tokenBudgetOutputValue.textContent = "-";
   tokenBudgetTotal.textContent = "-";
   tokenBudgetLimit.textContent = "-";
-  tokenBudgetCaption.textContent = message;
+  clearInputMeta();
 }
 
 function renderTokenBudget(payload) {
@@ -239,21 +266,7 @@ function renderTokenBudget(payload) {
   tokenBudgetTotal.textContent = `${totalTokens}`;
   tokenBudgetLimit.textContent = `${limit}`;
 
-  if (!payload.input_present) {
-    tokenBudgetCaption.textContent = "입력이 없어서 예산 계산을 대기 중입니다.";
-    return;
-  }
-
-  const remaining = Number(payload.remaining_tokens);
-  const imageTokens = Number(payload.image_tokens) || 0;
-  if (payload.exceeds_limit) {
-    tokenBudgetCaption.textContent =
-      `한도를 ${Math.abs(remaining)} 토큰 초과합니다. 입력${imageTokens > 0 ? ` (이미지 ${imageTokens} 포함)` : ""} 또는 출력 예약을 줄이세요.`;
-    return;
-  }
-
-  tokenBudgetCaption.textContent =
-    `남은 여유는 ${remaining} 토큰입니다.${imageTokens > 0 ? ` 이미지 입력이 약 ${imageTokens} 토큰을 사용합니다.` : ""}`;
+  renderInputMeta(payload);
 }
 
 async function estimateTokenBudget() {
