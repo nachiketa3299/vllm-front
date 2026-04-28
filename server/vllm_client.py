@@ -245,7 +245,12 @@ class VLLMClient:
                             continue
                         delta = choices[0].get("delta") or {}
                         chunk: dict[str, str] = {}
-                        reasoning = delta.get("reasoning_content")
+                        # vLLM streaming: 키 이름이 'reasoning' (non-streaming 은
+                        # 'reasoning_content'). 양쪽 모두 방어적으로 받음.
+                        reasoning = (
+                            delta.get("reasoning")
+                            or delta.get("reasoning_content")
+                        )
                         if isinstance(reasoning, str) and reasoning:
                             chunk["reasoning"] = reasoning
                         content = delta.get("content")
