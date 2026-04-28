@@ -11,7 +11,6 @@ const textPreview = document.getElementById("text-preview");
 const reasoningPanel = document.getElementById("reasoning-panel");
 const reasoningPreview = document.getElementById("reasoning-preview");
 const copyOutputButton = document.getElementById("copy-output-button");
-const status = document.getElementById("status");
 const logOutput = document.getElementById("log-output");
 const modelStatusBadge = document.getElementById("model-status-badge");
 const modelRuntimeModel = document.getElementById("model-runtime-model");
@@ -114,8 +113,9 @@ function stopGenerationTimer() {
 }
 
 function setStatus(message, isError = false) {
-  status.textContent = message;
-  status.classList.toggle("error", isError);
+  // status div 제거됨 — 메시지는 로그 영역으로만 흐름
+  if (!message) return;
+  appendLog(isError ? `[ERROR] ${message}` : message);
 }
 
 function setPreview(target, data) {
